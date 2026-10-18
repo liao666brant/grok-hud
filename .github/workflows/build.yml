@@ -52,6 +52,6 @@ jobs:
           if ($LASTEXITCODE -eq 0) {
             gh release upload $env:GITHUB_REF_NAME @assets --clobber
           } else {
-            gh release create $env:GITHUB_REF_NAME @assets --verify-tag --title "Grok Budget $version" --notes-file CHANGELOG.md
+            gh release create $env:GITHUB_REF_NAME @assets --verify-tag --title "Grok HUD $version" --notes-file CHANGELOG.md
           }
           if ($LASTEXITCODE -ne 0) { throw 'Release publication failed.' }
