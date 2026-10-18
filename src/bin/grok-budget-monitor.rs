@@ -1,5 +1,6 @@
-// Task Scheduler owns this process directly. No console window or shell child
-// survives when the task is stopped, and native exit codes reach the scheduler.
+// The scheduler owns this process directly: Windows Task Scheduler or the Linux
+// systemd user units. No console window or shell child survives when the
+// service is stopped, and native exit codes reach the scheduler.
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
 use clap::Parser;

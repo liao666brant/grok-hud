@@ -2,7 +2,7 @@
 
 Grok Build 的非官方额度监测插件。在状态栏中查看账户用量、重置时间、会话成本和 Token，也可以导出中文 HTML 看板。
 
-**Windows x64 · Rust 原生 · 0.4.0 · MIT License**
+**Windows x64 / Linux x64 · Rust 原生 · 0.5.0 · MIT License**
 
 [下载最新版](https://github.com/liao666brant/grok-hud/releases/latest) · [版本记录](https://github.com/liao666brant/grok-hud/releases) · [反馈问题](https://github.com/liao666brant/grok-hud/issues)
 
@@ -24,29 +24,40 @@ Grok Build 的非官方额度监测插件。在状态栏中查看账户用量、
 
 ### 环境要求
 
-- Windows x64，已安装并登录 Grok Build。
-- 已验证 **Grok Build 1.0.41**；其他版本尚未验证。
-- 自动刷新需要系统允许创建当前用户的 Windows 计划任务。
+- Windows x64 或 Linux x64，已安装并登录 Grok Build。
+- Windows：已验证 **Grok Build 1.0.41**；Linux 尚待真机验收。其他版本未逐一验证。
+- Linux：安装器需要 `jq`；自动刷新需要可用的 systemd 用户会话（`systemctl --user`），无 systemd 时安装仍完成，只是跳过后台监测。
+- Windows 自动刷新需要系统允许创建当前用户的 Windows 计划任务。
 
 ### 下载与安装
 
-从 [Releases](https://github.com/liao666brant/grok-hud/releases/latest) 下载 Windows x64 ZIP，解压后在该目录打开 PowerShell：
+从 [Releases](https://github.com/liao666brant/grok-hud/releases/latest) 下载对应平台的 ZIP，解压后在分发包根目录运行安装器。
+
+Windows（PowerShell）：
 
 ```powershell
 ./install.ps1
 ```
 
-安装器会注册插件、配置状态栏，并启动当前用户后台任务 `GrokBudgetMonitor`。任务使用普通用户权限、隐藏运行，不保存登录密码。登录时自动启动；退出或被停止后，每分钟的触发器会自动拉起，运行中的实例不会重复启动。
+Linux（POSIX shell）：
+
+```bash
+./install.sh
+```
+
+安装器会注册插件、配置状态栏，并启动当前用户的后台监测。监测使用普通用户权限、隐藏运行，不保存登录密码；登录时自动启动，退出或被停止后每分钟自动拉起，运行中的实例不会重复启动。Windows 通过计划任务 `GrokBudgetMonitor` 实现，Linux 通过 systemd 用户单元 `grok-budget-monitor.service` 和 `grok-budget-monitor.timer` 实现。
+
+Linux 分发包中的二进制沿用 `.exe` 文件名，使插件 hooks 与清单在两个平台保持一致；Linux 对可执行文件扩展名没有要求。
 
 **安装或更新后，请重新启动 Grok 客户端，让定时配置和 hooks 生效。** 安装器不会主动结束当前会话。
 
-发布页提供 SHA-256 校验文件，可用 `Get-FileHash <下载的ZIP路径> -Algorithm SHA256` 核对下载文件。
+发布页提供 SHA-256 校验文件。Windows 用 `Get-FileHash <下载的ZIP路径> -Algorithm SHA256` 核对；Linux 在 ZIP 所在目录执行 `sha256sum -c <下载的ZIP路径>.sha256` 核对。
 
 ## 使用
 
-在分发包根目录直接调用原生程序：
+在分发包根目录直接调用原生程序（两个平台相同）：
 
-```powershell
+```sh
 # 查询额度与本机统计
 ./grok-budget/grok-budget.exe
 
@@ -113,7 +124,7 @@ Start-Process ./output/grok-budget.html
 | 会话启动 / 恢复 | 提交立即查询信号，受请求合并和最低间隔限制 |
 | 回答结束 | 提交约 2 秒后的查询；额度信息未变化时，约 10 秒后补查一次 |
 | 无会话信号 | 最后一次状态栏 / hook 信号超过 20 秒后，不再自动访问额度接口 |
-| 后台退出或被停止 | 由 Windows 计划任务在下一个一分钟触发点自动拉起；用户必须处于登录状态，系统须可运行任务 |
+| 后台退出或被停止 | 由 Windows 计划任务或 Linux watchdog timer 在下一个一分钟触发点自动拉起；用户必须处于登录状态，系统须可运行任务 |
 | 手动刷新 | 跳过普通缓存等待，不重复发起进行中的请求，也不绕过服务端限流 |
 
 自动请求至少间隔 5 秒，刚完成的查询可能合并或推迟事件请求。最后一次活跃信号后保留 60 秒活跃窗口；实际显示延迟还受服务端记账和状态栏刷新时机影响。
@@ -170,17 +181,21 @@ Start-Process ./output/grok-budget.html
 
 ## 更新与卸载
 
-下载新版本后运行 `./install.ps1`。若同名插件来自另一个仍存在的目录，安装器会停止；使用原安装来源目录更新即可。
+下载新版本后运行 `./install.ps1`（Windows）或 `./install.sh`（Linux）。若同名插件来自另一个仍存在的目录，安装器会停止；使用原安装来源目录更新即可。
 
-安装前会将旧配置、插件副本、注册信息及已有任务定义备份到 `.grok/grok-budget/backups/<时间>/`。历史数据库位于 `.grok/grok-budget/history.sqlite3`，更新时保留数据。
+安装前会将旧配置、插件副本、注册信息及已有任务或单元定义备份到 `.grok/grok-budget/backups/<时间>/`。历史数据库位于 `.grok/grok-budget/history.sqlite3`，更新时保留数据。
 
-安装器生成的 `.grok/grok-budget/statusline.cmd` 是 Grok 的兼容启动入口，需要保留。仓库和分发包不再提供额外的 `.cmd` 包装脚本。
+安装器生成的状态栏启动入口（Windows 为 `.grok/grok-budget/statusline.cmd`，Linux 为 `.grok/grok-budget/statusline.sh`）是 Grok 的兼容启动入口，需要保留。仓库和分发包不再提供额外的 `.cmd` 包装脚本。
 
 ```powershell
 ./uninstall.ps1
 ```
 
-卸载脚本会先禁用触发器，再停止并删除本插件的后台任务，移除属于本插件的状态栏配置，再通过 Grok 卸载插件。历史、运行文件和备份保留；重启 Grok 后生效。
+```bash
+./uninstall.sh
+```
+
+卸载脚本会先停止并禁用后台监测的触发器（Windows 计划任务 / Linux systemd 用户单元），移除属于本插件的状态栏配置，再通过 Grok 卸载插件。历史、运行文件和备份保留；重启 Grok 后生效。
 
 ## 常见问题
 
@@ -197,7 +212,12 @@ Get-ScheduledTask -TaskName GrokBudgetMonitor | Select-Object TaskName, State
 Get-ScheduledTaskInfo -TaskName GrokBudgetMonitor | Select-Object LastRunTime, LastTaskResult
 ```
 
-0.3.1 起，后台停止后通常在一分钟内恢复；`Running` 表示正在运行。需要立即启动可执行 `Start-ScheduledTask -TaskName GrokBudgetMonitor`。如需持续暂停，应先执行 `Disable-ScheduledTask -TaskName GrokBudgetMonitor`，再执行 `Stop-ScheduledTask -TaskName GrokBudgetMonitor`；恢复时执行 `Enable-ScheduledTask` 和 `Start-ScheduledTask`。单独停止任务会被自动拉起。
+```bash
+systemctl --user status grok-budget-monitor.service
+systemctl --user list-timers grok-budget-monitor.timer
+```
+
+0.3.1 起，后台停止后通常在一分钟内恢复；`Running` / `active` 表示正在运行。需要立即启动：Windows 执行 `Start-ScheduledTask -TaskName GrokBudgetMonitor`，Linux 执行 `systemctl --user start grok-budget-monitor.service`。如需持续暂停：Windows 先 `Disable-ScheduledTask -TaskName GrokBudgetMonitor` 再 `Stop-ScheduledTask -TaskName GrokBudgetMonitor`；Linux 先 `systemctl --user disable grok-budget-monitor.timer`（关掉 watchdog）再 `systemctl --user stop grok-budget-monitor.service`；恢复时对应执行 enable 和 start。单独停止服务会被自动拉起。
 
 **为什么金额变了，百分比没变？**
 
@@ -209,26 +229,39 @@ Get-ScheduledTaskInfo -TaskName GrokBudgetMonitor | Select-Object LastRunTime, L
 
 ## 从源码构建
 
-需要 rustup 和 Windows C++ 构建工具。`rust-toolchain.toml` 固定 Rust 1.96.0、rustfmt 和 Clippy。在仓库根目录执行：
+需要 rustup；Windows 另需 C++ 构建工具，Linux 需要 `jq`、`zip`、`unzip` 和 coreutils（`sha256sum`）。`rust-toolchain.toml` 固定 Rust 1.96.0、rustfmt 和 Clippy。在仓库根目录执行：
+
+Windows：
 
 ```powershell
 ./scripts/build.ps1
 ./install.ps1
 ```
 
-构建脚本检查格式、运行 release 测试和 Clippy、检查 PowerShell 语法与计划任务定义，然后生成 ZIP 和 SHA-256。打包时逐文件核对内容，并执行解压后的程序验证版本。仅编译时执行 `cargo build --release --locked`，程序位于 `target/release/grok-budget.exe`。
+Linux：
 
-真实计划任务恢复测试需在已登录的 Windows 用户会话执行 `powershell -NoProfile -ExecutionPolicy Bypass -File tests/monitor-task.ps1 -Integration`。它使用独立任务和无登录凭据的测试目录，验证停止后自动恢复及多次启动只保留一个实例，最后移除测试任务。CI 运行定义、无窗口程序格式与退出码测试；真实恢复测试在本机验收。
+```bash
+./scripts/build.sh
+./install.sh
+```
 
-GitHub Actions 在推送和 PR 时构建、测试并保存 ZIP；推送与清单版本一致的 `v*` 标签后，仅在全部检查通过时上传 GitHub Release。版本说明见 [CHANGELOG.md](CHANGELOG.md)。
+构建脚本检查格式、运行 release 测试和 Clippy、检查脚本语法与监测定义（Windows 检查 PowerShell 语法与计划任务定义，Linux 用 `sh -n` 与 systemd 单元定义测试），然后生成对应平台的 ZIP 和 SHA-256。打包时逐文件核对内容，并执行解压后的程序验证版本。仅编译时执行 `cargo build --release --locked`，程序位于 `target/release/grok-budget`（Windows 为 `grok-budget.exe`）。
+
+真实恢复测试需在已登录的用户会话执行：Windows `powershell -NoProfile -ExecutionPolicy Bypass -File tests/monitor-task.ps1 -Integration`；Linux `sh tests/monitor-service.sh -Integration`。两者都使用独立定义和无登录凭据的测试目录，验证停止后自动恢复及多次启动只保留一个实例，最后移除测试单元。CI 运行定义、程序格式与退出码测试；真实恢复测试在对应平台的本机验收。
+
+GitHub Actions 在推送和 PR 时构建、测试并保存两个平台的 ZIP；推送与清单版本一致的 `v*` 标签后，仅在全部检查通过时上传 GitHub Release。版本说明见 [CHANGELOG.md](CHANGELOG.md)。
 
 | 路径 | 内容 |
 | --- | --- |
 | `src/` | 额度接口、账本统计、缓存调度和终端显示 |
 | `grok-budget/` | 插件清单、hooks、`/budget` 命令及内嵌看板模板 |
-| `install.ps1` / `uninstall.ps1` | 安装、更新与卸载 |
-| `scripts/` | 计划任务定义、构建检查与发布包生成 |
-| `.github/workflows/build.yml` | Windows CI 与标签发布 |
+| `install.ps1` / `uninstall.ps1` | Windows 安装、更新与卸载 |
+| `install.sh` / `uninstall.sh` | Linux 安装、更新与卸载 |
+| `scripts/monitor-task.ps1` | Windows 计划任务定义（安装器与测试共用） |
+| `scripts/monitor-service.sh` | Linux systemd 用户单元定义（安装器与测试共用） |
+| `scripts/build.*` / `scripts/package.*` | 各平台构建检查与发布包生成 |
+| `.github/workflows/build.yml` | 双平台 CI 与标签发布 |
+| `tests/monitor-task.ps1` / `tests/monitor-service.sh` | 后台监测定义与真实恢复测试 |
 | `tests/native.rs` | 数据口径、刷新调度、并发与显示回归测试 |
 | `tests/speed.rs` | 生成指标、排版合并与端到端状态栏测试 |
 

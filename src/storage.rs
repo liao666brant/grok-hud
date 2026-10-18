@@ -295,8 +295,9 @@ pub fn signal_at(
     Ok(())
 }
 
-/// The monitor is launched independently by Windows Task Scheduler. Grok kills
-/// subprocess trees of status commands, so UI/hook processes must only signal it.
+/// The monitor is launched independently by Windows Task Scheduler or the Linux
+/// systemd user units. Grok kills subprocess trees of status commands, so
+/// UI/hook processes must only signal it.
 pub fn request_background(
     home: &Path,
     dir: &Path,

@@ -16,7 +16,7 @@ if ($LASTEXITCODE -ne 0 -or $binaryVersion -ne "grok-budget $version") { throw '
 Copy-Item -LiteralPath $binary -Destination (Join-Path $repoRoot 'grok-budget\grok-budget.exe') -Force
 $monitor = Join-Path $repoRoot 'target\release\grok-budget-monitor.exe'
 Copy-Item -LiteralPath $monitor -Destination (Join-Path $repoRoot 'grok-budget\grok-budget-monitor.exe') -Force
-$files = @('Cargo.toml','Cargo.lock','rust-toolchain.toml','README.md','LICENSE','CHANGELOG.md','install.ps1','uninstall.ps1')
+$files = @('Cargo.toml','Cargo.lock','rust-toolchain.toml','README.md','LICENSE','CHANGELOG.md','install.ps1','uninstall.ps1','install.sh','uninstall.sh')
 foreach ($directory in @('src','tests','scripts','grok-budget')) {
     $files += Get-ChildItem -LiteralPath (Join-Path $repoRoot $directory) -File -Recurse | ForEach-Object {
         $_.FullName.Substring($repoRoot.Length + 1).Replace('\','/')

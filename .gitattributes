@@ -6,5 +6,6 @@
 *.html text eol=lf
 *.py text eol=lf
 *.ps1 text eol=crlf
+*.sh text eol=lf
 *.exe binary
 *.zip binary

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0
+
+- 新增 Linux x64 支持：`install.sh` / `uninstall.sh` 安装与卸载，`statusline.sh` 状态栏启动入口，systemd 用户级 `grok-budget-monitor.service` + 每分钟 watchdog timer `grok-budget-monitor.timer` 负责后台监测（登录自启、停止后自动拉起、运行中不重复启动），发布 `linux-x64` 包并新增 Ubuntu CI 构建。
+- hooks 命令改为跨平台写法：去掉 PowerShell 显式 `&` 调用符，Windows 由 Grok 在带引号可执行路径前自动补 `&`，Linux 经 `sh -c` 执行；Linux 分发包的二进制沿用 `.exe` 文件名，使 hooks 与插件清单在两个平台完全一致。
+- Linux 安装器需要 `jq`（解析 `grok plugin list --json`）；无可用的 systemd 用户会话时安装仍完成，跳过后台监测并提示手动运行 `--watch` / `--daemon`。
+- 新增 `tests/monitor-service.sh`：systemd 单元定义、ELF 格式与退出码测试（CI 运行），`-Integration` 真实恢复测试在已登录 Linux 会话执行。
+- Windows 行为保持不变；hooks 写法变化依赖 Grok 对带引号可执行路径自动补 `&` 的文档行为，建议更新后在 Grok 1.0.41 及以上版本确认会话启停事件仍触发。
+
 ## 0.4.0
 
 - 状态栏新增生成指标：会话缓存率（账本口径，无数据时用状态栏载荷缓存桶兜底）、最近已结算轮次的输出速度（输出 Token ÷ 首字到最后一字的生成时长，不足 100 Token 不显示，推理不外露时标 `≈`）和最近调用的首字等待（等待期间实时增长）。
