@@ -4,7 +4,7 @@ Grok Build 的非官方额度监测插件。在状态栏中查看账户用量、
 
 **Windows x64 · Rust 原生 · 0.4.0 · MIT License**
 
-[下载最新版](https://github.com/CodingChiao/grok-budget/releases/latest) · [版本记录](https://github.com/CodingChiao/grok-budget/releases) · [反馈问题](https://github.com/CodingChiao/grok-budget/issues)
+[下载最新版](https://github.com/liao666brant/grok-hud/releases/latest) · [版本记录](https://github.com/liao666brant/grok-hud/releases) · [反馈问题](https://github.com/liao666brant/grok-hud/issues)
 
 ## 功能
 
@@ -30,7 +30,7 @@ Grok Build 的非官方额度监测插件。在状态栏中查看账户用量、
 
 ### 下载与安装
 
-从 [Releases](https://github.com/CodingChiao/grok-budget/releases/latest) 下载 Windows x64 ZIP，解压后在该目录打开 PowerShell：
+从 [Releases](https://github.com/liao666brant/grok-hud/releases/latest) 下载 Windows x64 ZIP，解压后在该目录打开 PowerShell：
 
 ```powershell
 ./install.ps1
@@ -233,3 +233,7 @@ GitHub Actions 在推送和 PR 时构建、测试并保存 ZIP；推送与清单
 | `tests/speed.rs` | 生成指标、排版合并与端到端状态栏测试 |
 
 本仓库只包含 Grok Budget 插件，不包含 Grok Build 本体、账户凭据或使用历史。使用 [MIT License](LICENSE) 发布。
+
+## 致谢
+
+本项目 fork 自 [CodingChiao/grok-budget](https://github.com/CodingChiao/grok-budget)：额度监测、账本统计、后台监测与安装器的实现均来自该上游仓库。
