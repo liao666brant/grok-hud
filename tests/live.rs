@@ -89,10 +89,20 @@ fn grows_with_stream_and_reconciles_without_polluting_history() {
     assert_eq!(r["local"], f.report["local"]);
     assert_eq!(r["estimate"], f.report["estimate"]);
     assert_eq!(r["quota"], f.report["quota"]);
-    let colored = status_text(Some(&r), &s, 160, true);
-    assert!(colored.contains("\x1b[36m≈$0.1102"));
-    assert!(colored.contains("\x1b[35m≈1102"));
-    assert!(colored.contains("生成中"));
+    let colored = status_text(
+        Some(&r),
+        &s,
+        &speed::Flow::default(),
+        &environment::Environment::default(),
+        160,
+        true,
+    );
+    assert!(
+        colored.contains("\x1b[95m费用 \x1b[0m≈$0.1102"),
+        "{colored:?}"
+    );
+    assert!(colored.contains("\x1b[94m词元 \x1b[0m≈1.1K"), "{colored:?}");
+    assert!(colored.contains("\x1b[2m生成中\x1b[0m"), "{colored:?}");
 
     f.append(&f.chunk("b", 1, "中文ab"));
     f.append(&f.chunk("b", 1, "中文ab")); // duplicate transport event
@@ -404,12 +414,19 @@ fn installed_command_pipeline_updates_both_rows_with_fixed_stdin() {
     };
     f.append(&f.chunk("a", 1, "abcdefgh"));
     let first = run();
-    assert!(first.contains("会话 ≈$0.1102 · ≈1102 Token"), "{first}");
-    assert!(first.contains("已用 ≈$0.1102 · ≈1102 Token"), "{first}");
+    assert!(
+        first.contains("词元 ≈1.1K │ 生成中 │ 费用 ≈$0.1102"),
+        "{first}"
+    );
+    assert!(first.contains("用量 10% (重置剩余 "), "{first}");
+    assert!(first.contains("本机 ≈$0.1102 · ≈1.1K 词元"), "{first}");
     f.append(&f.chunk("b", 1, "abcdefgh"));
     let second = run();
-    assert!(second.contains("会话 ≈$0.1104 · ≈1104 Token"), "{second}");
-    assert!(second.contains("已用 ≈$0.1104 · ≈1104 Token"), "{second}");
+    assert!(
+        second.contains("词元 ≈1.1K │ 生成中 │ 费用 ≈$0.1104"),
+        "{second}"
+    );
+    assert!(second.contains("本机 ≈$0.1104 · ≈1.1K 词元"), "{second}");
     // Neither a changing stdout estimate nor repeated runs create quota samples.
     let db = grok_budget::storage::connect(&f.home.path().join("grok-budget")).unwrap();
     let count: i64 = db

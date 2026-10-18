@@ -104,7 +104,7 @@ fn live_money(value: Option<f64>, estimated: bool) -> String {
 }
 fn live_tokens(value: Option<f64>, estimated: bool) -> String {
     if estimated && let Some(value) = value {
-        format!("≈{value:.0}")
+        format!("≈{}", tokens(Some(value)))
     } else {
         tokens(value)
     }
@@ -128,200 +128,389 @@ fn clip(text: &str, columns: usize) -> String {
     out.push('…');
     out
 }
-fn usage_bar(used: f64) -> String {
-    let filled = ((used.clamp(0.0, 100.0) / 10.0).round() as usize).min(10);
-    format!("{}{}", "█".repeat(filled), "░".repeat(10 - filled))
+/// claude-hud usage colors: red from 90%, bright magenta from 75%, else bright blue.
+fn usage_code(percent: f64) -> u8 {
+    if percent >= 90.0 {
+        31
+    } else if percent >= 75.0 {
+        95
+    } else {
+        94
+    }
 }
+/// claude-hud's countdown: `45m`, `2h 30m`, `3d 4h`, `3d`.
+fn short_duration(seconds: f64) -> String {
+    let minutes = (seconds / 60.0).ceil() as u64;
+    if minutes < 60 {
+        return format!("{minutes}m");
+    }
+    let hours = minutes / 60;
+    let rest = minutes % 60;
+    if hours >= 24 {
+        if hours.is_multiple_of(24) {
+            format!("{}d", hours / 24)
+        } else {
+            format!("{}d {}h", hours / 24, hours % 24)
+        }
+    } else if rest > 0 {
+        format!("{hours}h {rest}m")
+    } else {
+        format!("{hours}h")
+    }
+}
+fn short_seconds(value: f64) -> String {
+    if value >= 10.0 {
+        format!("{value:.0}")
+    } else {
+        format!("{value:.1}")
+    }
+}
+
+/// One status line element: visible text plus color spans as byte ranges.
+struct Element {
+    text: String,
+    ranges: Vec<(usize, usize, u8)>,
+}
+impl Element {
+    fn plain(text: impl Into<String>) -> Self {
+        Element {
+            text: text.into(),
+            ranges: Vec::new(),
+        }
+    }
+    /// State text like 生成中 renders whole-dim.
+    fn dimmed(text: impl Into<String>) -> Self {
+        let text = text.into();
+        let len = text.len();
+        Element {
+            text,
+            ranges: vec![(0, len, DIM)],
+        }
+    }
+}
+
+/// Accumulates one element's text while recording value spans for coloring.
+struct Painter(String, Vec<(usize, usize, u8)>);
+impl Painter {
+    fn new() -> Self {
+        Painter(String::new(), Vec::new())
+    }
+    fn push(&mut self, text: &str) {
+        self.0.push_str(text);
+    }
+    fn value(&mut self, text: &str, code: u8) {
+        let start = self.0.len();
+        self.0.push_str(text);
+        self.1.push((start, self.0.len(), code));
+    }
+    fn finish(self) -> Element {
+        Element {
+            text: self.0,
+            ranges: self.1,
+        }
+    }
+}
+
+const SEP: &str = " · ";
+/// claude-hud's separator between elements sharing a line.
+const JOIN: &str = " │ ";
+/// claude-hud's separator between parts inside its usage element.
+const PART: &str = " | ";
+/// Dim, the color for transient state text like 生成中.
+const DIM: u8 = 2;
+/// Label palette by category: blue quantities (词元, 用量), cyan cache and
+/// skills, green output and servers, yellow timing and limits, magenta money.
+const BLUE: u8 = 94;
+const CYAN: u8 = 96;
+const GREEN: u8 = 92;
+const YELLOW: u8 = 93;
+const MAGENTA: u8 = 95;
+/// Grok truncates the statusline past five lines.
+const MAX_LINES: usize = 5;
+
+fn session_elements(session: &Session) -> Vec<Element> {
+    // Blue label (quantity), plain value.
+    let mut p = Painter::new();
+    p.value("词元 ", BLUE);
+    p.push(&live_tokens(session.tokens, session.tokens_estimated));
+    vec![p.finish()]
+}
+
+/// Cost: magenta label (money), plain amount.
+fn cost_element(session: &Session) -> Element {
+    let mut p = Painter::new();
+    p.value("费用 ", MAGENTA);
+    p.push(&live_money(session.cost, session.cost_estimated));
+    if session.partial {
+        p.push("*");
+    }
+    p.finish()
+}
+
+/// Environment counts: emoji icon, label, and number share the category color.
+/// Icons must measure two cells (guarded by test) so folding matches the terminal.
+fn environment_elements(environment: &environment::Environment) -> Vec<Element> {
+    let mut out = Vec::new();
+    if environment.skills > 0 {
+        let mut p = Painter::new();
+        p.value("⚡ 技能 ", CYAN);
+        p.value(&environment.skills.to_string(), CYAN);
+        out.push(p.finish());
+    }
+    if environment.mcp > 0 {
+        let mut p = Painter::new();
+        p.value("🔌 MCP ", GREEN);
+        p.value(&environment.mcp.to_string(), GREEN);
+        out.push(p.finish());
+    }
+    out
+}
+
+fn quota_elements(r: &Value) -> Vec<Element> {
+    let usage = display_usage(r);
+    let limit = if r["estimate"]["available"] == true {
+        number(&r["estimate"]["usd"])
+    } else {
+        None
+    };
+    let token_limit = limit
+        .zip(number(&r["local"]["totalTokens"]))
+        .zip(number(&r["local"]["cost_usd"]))
+        .filter(|((l, t), c)| *l > 0.0 && *t > 0.0 && *c > 0.0)
+        .map(|((l, t), c)| t * l / c);
+    let incomplete = ["unreadable_files", "undated_turns", "partial_cost_turns"]
+        .iter()
+        .any(|key| n(&usage[*key]) > 0.0);
+
+    // claude-hud with its bar disabled: colored label, banded percent,
+    // plain countdown parenthetical.
+    let mut spent = Painter::new();
+    spent.value("用量 ", BLUE);
+    match number(&r["quota"]["used_percent"]) {
+        Some(used) => spent.value(&format!("{used}%"), usage_code(used)),
+        None => spent.value("--", DIM),
+    }
+    let mut notes: Vec<String> = Vec::new();
+    if let Some(remaining) = timestamp(&r["quota"]["period_end"])
+        .ok()
+        .map(|end| end - now())
+        .filter(|remaining| *remaining > 0.0)
+    {
+        notes.push(format!("重置剩余 {}", short_duration(remaining)));
+    }
+    if r["stale"] == true {
+        notes.push("旧数据".into());
+    }
+    if !notes.is_empty() {
+        spent.push(&format!(" ({})", notes.join(" · ")));
+    }
+    let spent = spent.finish();
+
+    let mut local = Painter::new();
+    local.value("本机 ", MAGENTA);
+    local.push(&live_money(
+        number(&usage["cost_usd"]),
+        usage["cost_estimated"] == true,
+    ));
+    if incomplete {
+        local.push("*");
+    }
+    local.push(SEP);
+    local.push(&live_tokens(
+        number(&usage["totalTokens"]),
+        usage["tokens_estimated"] == true,
+    ));
+    local.push(" 词元");
+
+    let mut weekly = Painter::new();
+    weekly.value("周限 ", YELLOW);
+    weekly.push(&format!(
+        "{}{}",
+        if limit.is_some() { "≈" } else { "" },
+        money(limit)
+    ));
+    weekly.push(SEP);
+    weekly.push(&format!(
+        "{}{}",
+        if token_limit.is_some() { "≈" } else { "" },
+        tokens(token_limit)
+    ));
+    weekly.push(" 词元");
+
+    vec![spent, local.finish(), weekly.finish()]
+}
+
+fn perf_elements(flow: &speed::Flow) -> Vec<Element> {
+    let mut out = Vec::new();
+    if let Some(cache) = flow.cache_rate {
+        // Cyan label (cache), plain percent.
+        let mut p = Painter::new();
+        p.value("缓存率 ", CYAN);
+        p.push(&format!("{:.1}%", (cache * 100.0).clamp(0.0, 100.0)));
+        out.push(p.finish());
+    }
+    if let Some(value) = flow.speed {
+        // Green label (output), plain speed value.
+        let mut p = Painter::new();
+        p.value("输出: ", GREEN);
+        p.push(&format!(
+            "{}{value:.1} tok/s",
+            if flow.speed_approx { "≈" } else { "" }
+        ));
+        out.push(p.finish());
+    }
+    if let Some(value) = flow.ttft {
+        // Yellow label (timing), plain seconds.
+        let mut p = Painter::new();
+        p.value("首字 ", YELLOW);
+        p.push(&format!("{}s", short_seconds(value)));
+        out.push(p.finish());
+    }
+    out
+}
+
 pub fn status_text(
     report: Option<&Value>,
     session: &Session,
+    flow: &speed::Flow,
+    environment: &environment::Environment,
     columns: usize,
     color: bool,
 ) -> String {
     let columns = columns.clamp(1, 500);
-    // No dim, faint, custom font or letter spacing. Labels keep the terminal foreground;
-    // accents stay limited to 36 for money, 35 for token counts, and 31/32/33 for the
-    // usage bar and percent. Colors are injected after layout, so padding and clipping
-    // only measure visible text.
-    let sep = " · ";
-    let session_money = live_money(session.cost, session.cost_estimated);
-    let session_tokens = live_tokens(session.tokens, session.tokens_estimated);
-    let current = format!(
-        "会话 {session_money}{}{sep}{session_tokens} Token{}",
-        if session.partial { "*" } else { "" },
-        if session.generating {
-            " · 生成中"
-        } else {
-            ""
-        },
-    );
-    let mut spent_money = String::new();
-    let mut spent_tokens = String::new();
-    let mut limit_money = String::new();
-    let mut weekly_tokens = String::new();
-    let mut used: Option<f64> = None;
-    let mut pct = String::new();
-    let mut bar: Option<String> = None;
-    let mut bar_in_spent = false;
-    let output;
+    // Layout mirrors claude-hud: a session line whose parts join with " │ "
+    // like its project line and a usage line whose parts join with " | "
+    // like its usage element. Every label carries its category color, values
+    // stay plain, and the environment counts tint label and number alike;
+    // the usage percent keeps its blue/magenta/red bands, the reset
+    // countdown is a plain parenthetical, and 生成中 stays dim. Parts that
+    // do not fit stack one per row, and the overflow folds into Grok's
+    // five-line limit. Colors are injected after layout from per-element
+    // spans, so merging and clipping only measure visible text.
+    let mut elements = Vec::new();
+    let mut groups: Vec<(usize, usize, &str)> = Vec::new();
+    let start = elements.len();
+    elements.extend(session_elements(session));
+    elements.extend(perf_elements(flow));
+    if session.generating {
+        elements.push(Element::dimmed("生成中"));
+    }
+    elements.push(cost_element(session));
+    // Zero counts hide; homes without skills or servers stay quiet.
+    elements.extend(environment_elements(environment));
+    groups.push((start, elements.len() - start, JOIN));
+    let start = elements.len();
     if let Some(r) = report {
-        let usage = display_usage(r);
-        let limit = if r["estimate"]["available"] == true {
-            number(&r["estimate"]["usd"])
-        } else {
-            None
-        };
-        let token_limit = limit
-            .zip(number(&r["local"]["totalTokens"]))
-            .zip(number(&r["local"]["cost_usd"]))
-            .filter(|((l, t), c)| *l > 0.0 && *t > 0.0 && *c > 0.0)
-            .map(|((l, t), c)| t * l / c);
-        used = number(&r["quota"]["used_percent"]);
-        pct = used
-            .map(|v| format!("{v}%"))
-            .unwrap_or_else(|| "--%".into());
-        bar = used.map(usage_bar);
-        let incomplete = ["unreadable_files", "undated_turns", "partial_cost_turns"]
-            .iter()
-            .any(|key| n(&usage[*key]) > 0.0);
-        spent_money = live_money(number(&usage["cost_usd"]), usage["cost_estimated"] == true);
-        spent_tokens = live_tokens(
-            number(&usage["totalTokens"]),
-            usage["tokens_estimated"] == true,
-        );
-        let spent_base = format!(
-            "已用 {spent_money}{}{sep}{spent_tokens} Token",
-            if incomplete { "*" } else { "" },
-        );
-        limit_money = format!("{}{}", if limit.is_some() { "≈" } else { "" }, money(limit));
-        weekly_tokens = format!(
-            "{}{}",
-            if token_limit.is_some() { "≈" } else { "" },
-            tokens(token_limit)
-        );
-        let weekly = format!("周限 {limit_money}{sep}{weekly_tokens} Token");
-        let mut reset = format!(
-            "重置 {}{}{}",
-            local_date(&r["quota"]["period_end"], "%m-%d %H:%M"),
-            if r["stale"] == true { sep } else { "" },
-            if r["stale"] == true { "旧数据" } else { "" }
-        );
-        if let Some(age) = number(&r["cache_age_seconds"]) {
-            reset.push_str(&format!("{sep}更新于 {}秒前", age as u64));
-        }
-        // Try the two-row grid with the usage bar, then without it, then fall back to
-        // clipped single cells. A bounded gutter keeps the columns close at every width.
-        let mut laid_out = String::new();
-        for with_bar in [true, false] {
-            let spent_cell = match (&bar, with_bar) {
-                (Some(b), true) => format!("{spent_base}{sep}{b} {pct}"),
-                _ => format!("{spent_base}{sep}{pct}"),
-            };
-            let left = width(&current).max(width(&weekly));
-            let right = width(&spent_cell).max(width(&reset));
-            if left + right + 4 <= columns {
-                laid_out = format!(
-                    "{}{}{}\n{}{}{}",
-                    current,
-                    " ".repeat(left - width(&current) + 4),
-                    spent_cell,
-                    weekly,
-                    " ".repeat(left - width(&weekly) + 4),
-                    reset
-                );
-                bar_in_spent = bar.is_some() && with_bar;
-                break;
-            }
-        }
-        if laid_out.is_empty() {
-            let spent_cell = format!("{spent_base}{sep}{pct}");
-            laid_out = [&current, &spent_cell, &weekly, &reset]
-                .map(|line| clip(line, columns))
-                .join("\n");
-        }
-        output = laid_out;
+        elements.extend(quota_elements(r));
     } else {
-        output = format!(
-            "{}\n{}",
-            clip(&current, columns),
-            clip("额度暂不可用  请运行 grok-budget.exe --refresh", columns)
-        );
+        elements.push(Element::plain(
+            "额度暂不可用 · 请运行 grok-budget.exe --refresh",
+        ));
     }
-    if !color {
-        return output;
+    groups.push((start, elements.len() - start, PART));
+
+    let mut rows: Vec<(Vec<usize>, &str)> = Vec::new();
+    for (start, len, join) in groups {
+        let mut row: Vec<usize> = Vec::new();
+        let mut row_width = 0;
+        for (index, element) in elements.iter().enumerate().skip(start).take(len) {
+            let w = width(&element.text);
+            if !row.is_empty() && row_width + width(join) + w > columns {
+                rows.push((std::mem::take(&mut row), join));
+                row_width = 0;
+            }
+            row_width += usize::from(!row.is_empty()) * width(join) + w;
+            row.push(index);
+        }
+        if !row.is_empty() {
+            rows.push((row, join));
+        }
     }
-    // Locate fields inside their own cells, never search numeric values across a row.
-    let fields = [
-        ("会话", session_money.as_str(), session_tokens.as_str()),
-        ("已用", spent_money.as_str(), spent_tokens.as_str()),
-        ("周限", limit_money.as_str(), weekly_tokens.as_str()),
-    ];
-    let mut painted = String::new();
-    for (row, line) in output.lines().enumerate() {
-        if row > 0 {
-            painted.push('\n');
+    // Grok truncates past five lines; the overflow folds into one last row.
+    if rows.len() > MAX_LINES {
+        let overflow = rows.split_off(MAX_LINES - 1);
+        // Each folded element keeps its own group's separator; a group
+        // boundary inside the fold joins with the usage line's part.
+        let pairs: Vec<(usize, &str)> = overflow
+            .iter()
+            .flat_map(|(row, join)| row.iter().map(|&index| (index, *join)))
+            .collect();
+        let mut text = String::new();
+        let mut spans: Vec<(usize, usize, u8)> = Vec::new();
+        for (position, &(index, join)) in pairs.iter().enumerate() {
+            if position > 0 {
+                text.push_str(if pairs[position - 1].1 == join {
+                    join
+                } else {
+                    PART
+                });
+            }
+            let base = text.len();
+            let element = &elements[index];
+            text.push_str(&element.text);
+            spans.extend(
+                element
+                    .ranges
+                    .iter()
+                    .map(|(s, e, c)| (base + s, base + e, *c)),
+            );
         }
-        let mut ranges = Vec::new();
-        for (label, amount, count) in fields {
-            let Some(cell) = line.find(label) else {
-                continue;
-            };
-            let start = cell + label.len() + 1;
-            if line
-                .get(start..)
-                .is_some_and(|tail| tail.starts_with(amount))
-                && !amount.is_empty()
-            {
-                ranges.push((start, start + amount.len(), 36));
-            }
-            let partial_mark = line
-                .get(start + amount.len()..)
-                .is_some_and(|tail| tail.starts_with('*'));
-            let token_start = start + amount.len() + usize::from(partial_mark) + sep.len();
-            if !count.is_empty()
-                && count.trim_start_matches('≈') != "--"
-                && line
-                    .get(token_start..)
-                    .is_some_and(|tail| tail.starts_with(count))
-            {
-                ranges.push((token_start, token_start + count.len(), 35));
-            }
-            if label == "已用"
-                && let Some(u) = used
-            {
-                let span = match (&bar, bar_in_spent) {
-                    (Some(b), true) => format!("{b} {pct}"),
-                    _ => pct.clone(),
-                };
-                let usage_start = token_start + count.len() + " Token".len() + sep.len();
-                if line
-                    .get(usage_start..)
-                    .is_some_and(|tail| tail.starts_with(&span))
-                {
-                    ranges.push((
-                        usage_start,
-                        usage_start + span.len(),
-                        if u >= 95.0 {
-                            31
-                        } else if u >= 80.0 {
-                            33
-                        } else {
-                            32
-                        },
-                    ));
-                }
-            }
+        let join = pairs.last().map_or(PART, |&(_, join)| join);
+        elements.push(Element {
+            text,
+            ranges: spans,
+        });
+        rows.push((vec![elements.len() - 1], join));
+    }
+    // A lone element wider than the terminal is clipped; spans fully inside the
+    // retained prefix survive truncation, the rest is dropped. Byte offsets past
+    // the prefix would cut into the appended ellipsis, so they must go.
+    for row in &rows {
+        if row.0.len() == 1
+            && let Some(element) = elements.get_mut(row.0[0])
+            && width(&element.text) > columns
+        {
+            let clipped = clip(&element.text, columns);
+            let cut = clipped.strip_suffix('…').map_or(clipped.len(), str::len);
+            element.ranges.retain(|(_, end, _)| *end <= cut);
+            element.text = clipped;
         }
-        ranges.sort_unstable_by_key(|r| r.0);
+    }
+
+    let mut out = String::new();
+    for (index, row) in rows.iter().enumerate() {
+        if index > 0 {
+            out.push('\n');
+        }
+        let mut text = String::new();
+        let mut spans: Vec<(usize, usize, u8)> = Vec::new();
+        for (position, &element) in row.0.iter().enumerate() {
+            if position > 0 {
+                text.push_str(row.1);
+            }
+            let base = text.len();
+            let element = &elements[element];
+            text.push_str(&element.text);
+            spans.extend(
+                element
+                    .ranges
+                    .iter()
+                    .map(|(s, e, c)| (base + s, base + e, *c)),
+            );
+        }
+        if !color {
+            out.push_str(&text);
+            continue;
+        }
         let mut cursor = 0;
-        for (start, end, code) in ranges {
-            painted.push_str(&line[cursor..start]);
-            painted.push_str(&format!("\x1b[{code}m{}\x1b[0m", &line[start..end]));
+        for (start, end, code) in spans {
+            out.push_str(&text[cursor..start]);
+            out.push_str(&format!("\x1b[{code}m{}\x1b[0m", &text[start..end]));
             cursor = end;
         }
-        painted.push_str(&line[cursor..]);
+        out.push_str(&text[cursor..]);
     }
-    painted
+    out
 }
 pub fn report_text(r: &Value) -> String {
     let q = &r["quota"];
@@ -361,10 +550,15 @@ pub fn report_text(r: &Value) -> String {
         n(&u["turns"]),
         n(&u["sessions"])
     ));
+    let input = n(&u["inputTokens"]);
+    let cached = n(&u["cachedReadTokens"]);
+    let cache_rate = if input > 0.0 {
+        format!("{:.1}", cached / input * 100.0)
+    } else {
+        "未知".into()
+    };
     lines.push(format!(
-        "输入 {}（含缓存 {}）  输出 {} Token",
-        n(&u["inputTokens"]),
-        n(&u["cachedReadTokens"]),
+        "输入 {input}（含缓存 {cached} · 缓存率 {cache_rate}%）  输出 {} Token",
         n(&u["outputTokens"])
     ));
     lines.push("官方美元及 Token 周上限：接口未公开".into());

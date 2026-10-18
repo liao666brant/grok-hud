@@ -1,6 +1,8 @@
 pub mod data;
 pub mod display;
+pub mod environment;
 pub mod live;
+pub mod speed;
 pub mod storage;
 
 use anyhow::{Context, Result, bail};

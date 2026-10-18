@@ -114,13 +114,22 @@ fn run(args: &Args) -> Result<()> {
             if !args.offline {
                 grok_budget::live::apply(&home, &payload, &mut session, result.as_mut().ok());
             }
+            let flow = grok_budget::speed::measure(&home, &payload);
+            let environment = grok_budget::environment::count(&home, &payload);
             let columns = env::var("COLUMNS")
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(80);
             println!(
                 "{}",
-                display::status_text(result.as_ref().ok(), &session, columns, color_enabled(args))
+                display::status_text(
+                    result.as_ref().ok(),
+                    &session,
+                    &flow,
+                    &environment,
+                    columns,
+                    color_enabled(args)
+                )
             );
         } else {
             let report = result?;

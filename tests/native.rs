@@ -349,8 +349,16 @@ fn cumulative_tokens_refresh_without_waiting_for_quota_or_mutating_samples() {
     assert_eq!(display_usage(&report)["cost_usd"], 0.2);
     assert_eq!(report["local"]["totalTokens"], 110.0);
     assert_eq!(report["estimate"], estimate_before);
-    let text = status_text(Some(&report), &Session::default(), 100, false);
-    assert!(text.contains("已用 $0.20 · 220 Token"));
+    let text = status_text(
+        Some(&report),
+        &Session::default(),
+        &speed::Flow::default(),
+        &environment::Environment::default(),
+        100,
+        false,
+    );
+    assert!(text.contains("用量 1%"));
+    assert!(text.contains("本机 $0.20 · 220 词元"));
     let cached = collect_at(tmp.path(), &dir, Options::default(), at() + 3.0, |_| {
         panic!("quota must stay cached")
     })
@@ -402,11 +410,18 @@ fn session_remains_when_account_quota_unavailable() {
         partial: false,
         ..Session::default()
     };
-    let line = status_text(None, &session, 80, true);
+    let line = status_text(
+        None,
+        &session,
+        &speed::Flow::default(),
+        &environment::Environment::default(),
+        80,
+        true,
+    );
     let first = line.lines().next().unwrap();
-    assert!(first.contains("\x1b[36m$0.85\x1b[0m"));
-    assert!(first.contains("\x1b[35m3.72M\x1b[0m"));
-    assert!(strip_ansi(first).contains("会话 $0.85 · 3.72M Token"));
+    assert!(first.contains("\x1b[95m费用 \x1b[0m$0.85"));
+    assert!(first.contains("\x1b[94m词元 \x1b[0m3.72M"));
+    assert!(strip_ansi(first).contains("词元 3.72M │ 费用 $0.85"));
     assert!(line.contains("暂不可用"));
 }
 #[test]
@@ -418,10 +433,23 @@ fn zero_value_spans_color_cleanly() {
         partial: false,
         ..Session::default()
     };
-    let line = status_text(None, &session, 80, true);
+    let line = status_text(
+        None,
+        &session,
+        &speed::Flow::default(),
+        &environment::Environment::default(),
+        80,
+        true,
+    );
     assert_eq!(
         line.lines().next().unwrap(),
-        "会话 \x1b[36m$--\x1b[0m · \x1b[35m0\x1b[0m Token"
+        "\x1b[94m词元 \x1b[0m0 │ \x1b[95m费用 \x1b[0m$--"
+    );
+    assert!(
+        line.lines()
+            .nth(1)
+            .unwrap()
+            .starts_with("额度暂不可用 · 请运行 grok-budget.exe --refresh")
     );
     let session = Session {
         cost: Some(0.53),
@@ -429,14 +457,21 @@ fn zero_value_spans_color_cleanly() {
         partial: false,
         ..Session::default()
     };
-    let line = status_text(None, &session, 80, true);
+    let line = status_text(
+        None,
+        &session,
+        &speed::Flow::default(),
+        &environment::Environment::default(),
+        80,
+        true,
+    );
     assert_eq!(
         line.lines().next().unwrap(),
-        "会话 \x1b[36m$0.53\x1b[0m · \x1b[35m10.45M\x1b[0m Token"
+        "\x1b[94m词元 \x1b[0m10.45M │ \x1b[95m费用 \x1b[0m$0.53"
     );
 }
 #[test]
-fn layout_never_dims_stretches_or_drops_session_money() {
+fn layout_fits_every_width_and_keeps_all_amounts() {
     let mut r = snapshot(4.0, 1.54, at());
     r["estimate"] = json!({"available":true,"usd":51.19});
     let session = Session {
@@ -446,32 +481,92 @@ fn layout_never_dims_stretches_or_drops_session_money() {
         ..Session::default()
     };
     for w in [36, 60, 80, 120, 220] {
-        let line = status_text(Some(&r), &session, w, true);
-        assert!(line.lines().next().unwrap().contains("会话"));
-        assert!(line.contains("\x1b[36m$0.85\x1b[0m"));
-        assert!(line.contains("\x1b[35m3.72M\x1b[0m"));
+        let line = status_text(
+            Some(&r),
+            &session,
+            &speed::Flow::default(),
+            &environment::Environment::default(),
+            w,
+            true,
+        );
+        assert!(line.lines().next().unwrap().contains("费用"));
+        assert!(line.contains("\x1b[95m费用 \x1b[0m$0.85"), "{line:?}");
+        assert!(line.contains("\x1b[94m词元 \x1b[0m3.72M"), "{line:?}");
         let plain = strip_ansi(&line);
-        assert_eq!(plain, status_text(Some(&r), &session, w, false));
+        assert_eq!(
+            plain,
+            status_text(
+                Some(&r),
+                &session,
+                &speed::Flow::default(),
+                &environment::Environment::default(),
+                w,
+                false
+            )
+        );
         assert!(plain.contains("4%"));
-        assert!(plain.contains("已用 $1.54 · 12K Token"));
-        assert!(!line.contains('|'));
-        assert!(!line.contains("\x1b[2m"));
+        assert!(plain.contains("本机 $1.54 · 12K 词元"));
+        assert!(line.contains("\x1b[94m"));
         assert!(line.lines().all(|l| visible_width(l) <= w));
         assert!(line.lines().count() <= 4);
     }
-    // The usage bar only appears when the two-row grid fits with room to spare.
-    assert!(status_text(Some(&r), &session, 120, true).contains('░'));
-    assert!(!status_text(Some(&r), &session, 60, true).contains('░'));
+    // The usage window shows a bare percent, claude-hud style without its bar.
+    let narrow = status_text(
+        Some(&r),
+        &session,
+        &speed::Flow::default(),
+        &environment::Environment::default(),
+        36,
+        true,
+    );
+    let narrow_plain = strip_ansi(&narrow);
+    assert!(narrow_plain.contains("用量 4%"), "{narrow_plain}");
+    assert!(
+        !narrow_plain.contains('░') && !narrow_plain.contains('█'),
+        "{narrow_plain}"
+    );
+    assert!(narrow.contains("\x1b[94m4%\x1b[0m"), "{narrow:?}");
     assert_eq!(
-        status_text(Some(&r), &session, 120, true),
-        status_text(Some(&r), &session, 220, true)
+        status_text(
+            Some(&r),
+            &session,
+            &speed::Flow::default(),
+            &environment::Environment::default(),
+            120,
+            true
+        ),
+        status_text(
+            Some(&r),
+            &session,
+            &speed::Flow::default(),
+            &environment::Environment::default(),
+            220,
+            true
+        )
     );
     r["quota"]["used_percent"] = json!(96);
-    let hot = status_text(Some(&r), &session, 80, true);
+    let hot = status_text(
+        Some(&r),
+        &session,
+        &speed::Flow::default(),
+        &environment::Environment::default(),
+        80,
+        true,
+    );
     assert!(hot.contains("\x1b[31m"));
     assert!(hot.contains("96%"));
     r["stale"] = json!(true);
-    assert!(status_text(Some(&r), &session, 80, false).contains("旧数据"));
+    assert!(
+        status_text(
+            Some(&r),
+            &session,
+            &speed::Flow::default(),
+            &environment::Environment::default(),
+            80,
+            false
+        )
+        .contains("旧数据")
+    );
 }
 #[test]
 fn html_script_injection_is_escaped() {
@@ -506,11 +601,11 @@ fn statusline_colors_default_on_and_no_color_disables() {
         String::from_utf8(out.stdout).unwrap()
     };
     let colored = run(false);
-    assert!(colored.contains("\x1b[36m$0.53"), "{colored:?}");
-    assert!(colored.contains("\x1b[35m120"), "{colored:?}");
+    assert!(colored.contains("\x1b[95m费用 \x1b[0m$0.53"), "{colored:?}");
+    assert!(colored.contains("\x1b[94m词元 \x1b[0m120"), "{colored:?}");
     let plain = run(true);
     assert!(!plain.contains('\u{1b}'), "{plain:?}");
-    assert!(plain.contains("会话 $0.53 · 120 Token"), "{plain}");
+    assert!(plain.contains("词元 120 │ 费用 $0.53"), "{plain}");
     assert_eq!(strip_ansi(&colored), plain);
 }
 
@@ -527,18 +622,35 @@ fn colors_do_not_cross_cells_or_steal_usage_warning() {
                 ..Session::default()
             };
             for w in [36, 60, 80, 120] {
-                let text = status_text(Some(&r), &session, w, true);
-                assert!(text.contains("\x1b[35m12K\x1b[0m"), "{text:?}");
-                let code = if pct >= 95.0 {
+                let text = status_text(
+                    Some(&r),
+                    &session,
+                    &speed::Flow::default(),
+                    &environment::Environment::default(),
+                    w,
+                    true,
+                );
+                assert!(text.contains("12K 词元"), "{text:?}");
+                let code = if pct >= 90.0 {
                     31
-                } else if pct >= 80.0 {
-                    33
+                } else if pct >= 75.0 {
+                    95
                 } else {
-                    32
+                    94
                 };
                 let expected = format!("\x1b[{code}m");
                 assert!(text.contains(&expected), "{text:?}");
-                assert_eq!(strip_ansi(&text), status_text(Some(&r), &session, w, false));
+                assert_eq!(
+                    strip_ansi(&text),
+                    status_text(
+                        Some(&r),
+                        &session,
+                        &speed::Flow::default(),
+                        &environment::Environment::default(),
+                        w,
+                        false
+                    )
+                );
             }
         }
     }
@@ -551,8 +663,22 @@ fn colors_do_not_cross_cells_or_steal_usage_warning() {
             ..Session::default()
         };
         assert_eq!(
-            strip_ansi(&status_text(Some(&r), &session, w, true)),
-            status_text(Some(&r), &session, w, false)
+            strip_ansi(&status_text(
+                Some(&r),
+                &session,
+                &speed::Flow::default(),
+                &environment::Environment::default(),
+                w,
+                true
+            )),
+            status_text(
+                Some(&r),
+                &session,
+                &speed::Flow::default(),
+                &environment::Environment::default(),
+                w,
+                false
+            )
         );
     }
 }
@@ -866,4 +992,100 @@ fn stored_sampling_error_does_not_keep_the_cause_chain() {
     .unwrap();
     assert_eq!(r["error"], "额度响应不是有效 JSON");
     assert!(!r["error"].as_str().unwrap().contains("SECRET_BODY"));
+}
+
+#[test]
+fn environment_counts_skills_plugins_project_and_mcp() {
+    let tmp = TempDir::new().unwrap();
+    let home = tmp.path();
+    let skill = |root: &Path, name: &str| {
+        let dir = root.join(name);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("SKILL.md"), "skill").unwrap();
+    };
+    skill(&home.join("skills"), "user-a");
+    skill(&home.join("skills"), "shared-name");
+    // A directory without SKILL.md is shared code, not a skill.
+    fs::create_dir_all(home.join("skills/not-a-skill")).unwrap();
+    skill(&home.join("bundled/skills"), "builtin");
+    skill(&home.join("bundled/skills"), "shared-name"); // shadows the user one
+    fs::write(
+        home.join("config.toml"),
+        "[mcp_servers.fff]\ncommand = \"x\"\n[mcp_servers.context7]\nurl = \"y\"\n[mcp_servers.context7.headers]\nAuthorization = \"z\"\n[plugins]\nenabled = [\n  \"plug\", # one \" quote inside a comment\n  \"plug-b\",\n]\n[mcp_servers.late]\ncommand = \"after the plugins table\"\n",
+    )
+    .unwrap();
+    let plugin = home.join("installed-plugins/plug-abc");
+    fs::create_dir_all(plugin.join("skills")).unwrap();
+    fs::write(plugin.join("plugin.json"), r#"{"name":"plug"}"#).unwrap();
+    skill(&plugin.join("skills"), "plug-skill");
+    fs::write(plugin.join(".mcp.json"), r#"{"mcpServers":{"tasks":{}}}"#).unwrap();
+    let second = home.join("installed-plugins/plug-b");
+    fs::create_dir_all(second.join("skills")).unwrap();
+    fs::write(second.join("plugin.json"), r#"{"name":"plug-b"}"#).unwrap();
+    skill(&second.join("skills"), "plug-b-skill");
+    let disabled = home.join("installed-plugins/other");
+    fs::create_dir_all(disabled.join("skills")).unwrap();
+    fs::write(disabled.join("plugin.json"), r#"{"name":"other"}"#).unwrap();
+    skill(&disabled.join("skills"), "disabled-skill");
+
+    let project = tmp.path().join("project");
+    skill(&project.join(".grok/skills"), "proj-skill");
+    fs::write(
+        project.join(".grok/config.toml"),
+        "[mcp_servers.proj]\ncommand = \"x\"\n",
+    )
+    .unwrap();
+    fs::write(project.join(".mcp.json"), r#"{"mcpServers":{"proj2":{}}}"#).unwrap();
+
+    let payload = json!({"workspace": {"repo_root": project.to_str().unwrap()}});
+    let env = environment::count(home, &payload);
+    assert_eq!(env.skills, 6, "{env:?}"); // user-a, shared-name, builtin, plug-skill, plug-b-skill, proj-skill
+    assert_eq!(env.mcp, 6, "{env:?}"); // fff, context7, late, tasks, proj, proj2
+
+    let env = environment::count(home, &json!({"cwd": project.to_str().unwrap()}));
+    assert_eq!(env.skills, 6);
+    assert_eq!(env.mcp, 6);
+
+    // Without a project the home-only sources still count; the nested
+    // `context7.headers` table and the disabled plugin contribute nothing.
+    let env = environment::count(home, &json!({}));
+    assert_eq!(env.skills, 5);
+    assert_eq!(env.mcp, 4);
+}
+
+#[test]
+fn environment_parts_render_after_cost() {
+    let env = environment::Environment { skills: 34, mcp: 2 };
+    let session = Session {
+        cost: Some(0.85),
+        tokens: Some(1200.0),
+        ..Session::default()
+    };
+    let r = json!({"quota":{"used_percent":25}});
+    let line = status_text(Some(&r), &session, &speed::Flow::default(), &env, 200, true);
+    let plain = strip_ansi(&line);
+    assert!(
+        plain.contains("费用 $0.85 │ ⚡ 技能 34 │ 🔌 MCP 2"),
+        "{plain}"
+    );
+    assert!(
+        line.contains("\x1b[96m⚡ 技能 \x1b[0m\x1b[96m34\x1b[0m"),
+        "{line:?}"
+    );
+    assert!(
+        line.contains("\x1b[92m🔌 MCP \x1b[0m\x1b[92m2\x1b[0m"),
+        "{line:?}"
+    );
+    // Icons must stay double-width or folding math drifts from the terminal.
+    assert_eq!([width("⚡"), width("🔌")], [2, 2]);
+    // Zero counts hide, so homes without skills or servers stay quiet.
+    let quiet = status_text(
+        Some(&r),
+        &session,
+        &speed::Flow::default(),
+        &environment::Environment::default(),
+        200,
+        false,
+    );
+    assert!(!quiet.contains("技能") && !quiet.contains("MCP"), "{quiet}");
 }
