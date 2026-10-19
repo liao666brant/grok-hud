@@ -1,18 +1,23 @@
 # Shared by the installer and task-definition / recovery tests.
-function Stop-GrokBudgetLegacyMonitor {
+function Stop-GrokHudLegacyMonitor {
     param([Parameter(Mandatory)][string]$GrokHome)
-    # Releases through 0.3.0 used a PowerShell task whose native child can
-    # survive Stop-ScheduledTask. Limit migration cleanup to this home's runtime.
-    $runtimeRoot = [IO.Path]::GetFullPath((Join-Path $GrokHome 'grok-budget\runtime')).TrimEnd('\') + '\'
-    Get-CimInstance Win32_Process -Filter "Name = 'grok-budget.exe'" | Where-Object {
-        $_.ExecutablePath -and $_.ExecutablePath.StartsWith($runtimeRoot, [StringComparison]::OrdinalIgnoreCase) -and
+    # Releases through 0.5.0 used the grok-budget runtime. Also stop a monitor
+    # left by an interrupted earlier grok-hud install.
+    $roots = @(
+        [IO.Path]::GetFullPath((Join-Path $GrokHome 'grok-budget\runtime')).TrimEnd('\') + '\',
+        [IO.Path]::GetFullPath((Join-Path $GrokHome 'grok-hud\runtime')).TrimEnd('\') + '\'
+    )
+    Get-CimInstance Win32_Process | Where-Object {
+        $exe = $_.ExecutablePath
+        $_.Name -in @('grok-budget.exe', 'grok-hud.exe') -and $exe -and
+        @($roots | Where-Object { $exe.StartsWith($_, [StringComparison]::OrdinalIgnoreCase) }).Count -gt 0 -and
         $_.CommandLine -match '(?:^|\s)--daemon(?:\s|$)'
     } | ForEach-Object {
         Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
     }
 }
 
-function New-GrokBudgetMonitorTask {
+function New-GrokHudMonitorTask {
     param(
         [Parameter(Mandatory)][string]$RuntimeExe,
         [Parameter(Mandatory)][string]$GrokHome
@@ -32,10 +37,10 @@ function New-GrokBudgetMonitorTask {
         -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
         -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
     New-ScheduledTask -Action $action -Trigger @($logon, $watchdog) -Principal $principal -Settings $settings `
-        -Description 'Grok Budget account quota monitor (managed by grok-budget installer)'
+        -Description 'Grok HUD account quota monitor (managed by grok-hud installer)'
 }
 
-function Wait-GrokBudgetMonitor {
+function Wait-GrokHudMonitor {
     param([Parameter(Mandatory)][string]$TaskName, [int]$TimeoutSeconds = 15)
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     do {

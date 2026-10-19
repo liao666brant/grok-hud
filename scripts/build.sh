@@ -15,4 +15,6 @@ for script in install.sh uninstall.sh scripts/*.sh tests/*.sh; do
     sh -n "$script"
 done
 sh tests/monitor-service.sh
+sh tests/migrate-data.sh
+sh tests/install-bootstrap.sh
 sh scripts/package.sh "$output_directory"

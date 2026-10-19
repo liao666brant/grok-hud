@@ -22,7 +22,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         shell: pwsh
         run: |
-          $version = (Get-Content grok-budget/plugin.json -Raw | ConvertFrom-Json).version
+          $version = (Get-Content grok-hud/plugin.json -Raw | ConvertFrom-Json).version
           if ($env:GITHUB_REF_NAME -ne "v$version") { throw 'Tag and package versions differ.' }
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -37,7 +37,7 @@ jobs:
         shell: bash
         run: |
           ./scripts/build.sh artifacts
-          version=$(jq -r '.version' grok-budget/plugin.json)
+          version=$(jq -r '.version' grok-hud/plugin.json)
           if [ "${GITHUB_REF_NAME:-}" != "v$version" ] && [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             echo 'Tag and package versions differ.' >&2; exit 1
           fi
@@ -67,7 +67,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $version = (Get-Content grok-budget/plugin.json -Raw | ConvertFrom-Json).version
+          $version = (Get-Content grok-hud/plugin.json -Raw | ConvertFrom-Json).version
+          # Stable asset names let install.sh resolve releases/latest/download.
+          foreach ($platform in @('windows-x64', 'linux-x64')) {
+            $source = Join-Path 'artifacts' "GrokHUD-$version-$platform.zip"
+            if (Test-Path -LiteralPath $source) {
+              $stable = Join-Path 'artifacts' "GrokHUD-$platform.zip"
+              Copy-Item -LiteralPath $source -Destination $stable -Force
+              $hash = (Get-FileHash -LiteralPath $stable -Algorithm SHA256).Hash.ToLowerInvariant()
+              "$hash  GrokHUD-$platform.zip" | Set-Content -LiteralPath "$stable.sha256" -Encoding ascii
+            }
+          }
           $assets = @(Get-ChildItem artifacts -File | ForEach-Object FullName)
           gh release view $env:GITHUB_REF_NAME --json tagName *> $null
           if ($LASTEXITCODE -eq 0) {

@@ -5,19 +5,19 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 if (-not $OutputDirectory) { $OutputDirectory = $repoRoot }
 if (-not [IO.Path]::IsPathRooted($OutputDirectory)) { $OutputDirectory = Join-Path $repoRoot $OutputDirectory }
 $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
-$manifest = Get-Content -LiteralPath (Join-Path $repoRoot 'grok-budget\plugin.json') -Raw | ConvertFrom-Json
+$manifest = Get-Content -LiteralPath (Join-Path $repoRoot 'grok-hud\plugin.json') -Raw | ConvertFrom-Json
 $version = $manifest.version
 if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Expected a numeric release version.' }
 $cargoText = [IO.File]::ReadAllText((Join-Path $repoRoot 'Cargo.toml'))
 if ($cargoText -notmatch ('(?m)^version = "' + [regex]::Escape($version) + '"\r?$')) { throw 'Cargo and plugin versions differ.' }
-$binary = Join-Path $repoRoot 'target\release\grok-budget.exe'
+$binary = Join-Path $repoRoot 'target\release\grok-hud.exe'
 $binaryVersion = & $binary --version
-if ($LASTEXITCODE -ne 0 -or $binaryVersion -ne "grok-budget $version") { throw 'Release binary and manifest versions differ.' }
-Copy-Item -LiteralPath $binary -Destination (Join-Path $repoRoot 'grok-budget\grok-budget.exe') -Force
-$monitor = Join-Path $repoRoot 'target\release\grok-budget-monitor.exe'
-Copy-Item -LiteralPath $monitor -Destination (Join-Path $repoRoot 'grok-budget\grok-budget-monitor.exe') -Force
+if ($LASTEXITCODE -ne 0 -or $binaryVersion -ne "grok-hud $version") { throw 'Release binary and manifest versions differ.' }
+Copy-Item -LiteralPath $binary -Destination (Join-Path $repoRoot 'grok-hud\grok-hud.exe') -Force
+$monitor = Join-Path $repoRoot 'target\release\grok-hud-monitor.exe'
+Copy-Item -LiteralPath $monitor -Destination (Join-Path $repoRoot 'grok-hud\grok-hud-monitor.exe') -Force
 $files = @('Cargo.toml','Cargo.lock','rust-toolchain.toml','README.md','LICENSE','CHANGELOG.md','install.ps1','uninstall.ps1','install.sh','uninstall.sh')
-foreach ($directory in @('src','tests','scripts','grok-budget')) {
+foreach ($directory in @('src','tests','scripts','grok-hud')) {
     $files += Get-ChildItem -LiteralPath (Join-Path $repoRoot $directory) -File -Recurse | ForEach-Object {
         $_.FullName.Substring($repoRoot.Length + 1).Replace('\','/')
     }
@@ -26,7 +26,7 @@ $files = @($files | Sort-Object -Unique)
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $staging = Join-Path $repoRoot ('target\package\' + [Guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Path $staging,$OutputDirectory -Force
-$name = "GrokBudget-$version-windows-x64.zip"
+$name = "GrokHUD-$version-windows-x64.zip"
 $tempZip = Join-Path $staging $name
 $zip = [IO.Compression.ZipFile]::Open($tempZip, [IO.Compression.ZipArchiveMode]::Create)
 try {
@@ -42,7 +42,7 @@ foreach ($relative in $files) {
         throw "Packaged file differs: $relative"
     }
 }
-$extractedVersion = & (Join-Path $extracted 'grok-budget\grok-budget.exe') --version
+$extractedVersion = & (Join-Path $extracted 'grok-hud\grok-hud.exe') --version
 if ($LASTEXITCODE -ne 0 -or $extractedVersion -ne $binaryVersion) { throw 'Extracted binary smoke test failed.' }
 $output = Join-Path $OutputDirectory $name
 Move-Item -LiteralPath $tempZip -Destination $output -Force

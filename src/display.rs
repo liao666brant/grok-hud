@@ -404,7 +404,7 @@ pub fn status_text(
         elements.extend(quota_elements(r));
     } else {
         elements.push(Element::plain(
-            "额度暂不可用 · 请运行 grok-budget.exe --refresh",
+            "额度暂不可用 · 请运行 grok-hud.exe --refresh",
         ));
     }
     groups.push((start, elements.len() - start, PART));
@@ -630,7 +630,7 @@ pub fn write_html(r: &Value, path: &Path) -> Result<()> {
         .to_string()
         .replace('<', "\\u003c")
         .replace('&', "\\u0026");
-    let html = include_str!("../grok-budget/report.html").replace("__REPORT_DATA__", &encoded);
+    let html = include_str!("../grok-hud/report.html").replace("__REPORT_DATA__", &encoded);
     if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
         fs::create_dir_all(parent)?;
     }

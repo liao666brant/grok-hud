@@ -1,4 +1,4 @@
-use grok_budget::{display::*, live, *};
+use grok_hud::{display::*, live, *};
 use serde_json::{Value, json};
 use std::{fs, io::Write, path::PathBuf};
 use tempfile::TempDir;
@@ -61,7 +61,7 @@ impl Fixture {
         // Mirror main.rs: the caller refreshes live_local from the ledgers before
         // the stream overlay runs, so apply() never re-parses them itself.
         let start = timestamp(&report["quota"]["period_start"]).unwrap();
-        let baseline = grok_budget::data::local_usage(self.home.path(), start, now());
+        let baseline = grok_hud::data::local_usage(self.home.path(), start, now());
         report["live_local"] = baseline.clone();
         live::apply(
             self.home.path(),
@@ -384,17 +384,17 @@ fn installed_command_pipeline_updates_both_rows_with_fixed_stdin() {
         json!({"issuer":{"auth_mode":"oidc","key":"fixture-only","user_id":"fixture"}}).to_string(),
     )
     .unwrap();
-    grok_budget::storage::collect_at(
+    grok_hud::storage::collect_at(
         f.home.path(),
-        &f.home.path().join("grok-budget"),
-        grok_budget::storage::Options::default(),
+        &f.home.path().join("grok-hud"),
+        grok_hud::storage::Options::default(),
         now(),
         |_| Ok(f.report["quota"].clone()),
     )
     .unwrap();
     let run = || {
         use std::process::{Command, Stdio};
-        let mut child = Command::new(env!("CARGO_BIN_EXE_grok-budget"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_grok-hud"))
             .args(["--statusline", "--no-color", "--grok-home"])
             .arg(f.home.path())
             .env("COLUMNS", "160")
@@ -428,7 +428,7 @@ fn installed_command_pipeline_updates_both_rows_with_fixed_stdin() {
     );
     assert!(second.contains("本机 ≈$0.1104 · ≈1.1K 词元"), "{second}");
     // Neither a changing stdout estimate nor repeated runs create quota samples.
-    let db = grok_budget::storage::connect(&f.home.path().join("grok-budget")).unwrap();
+    let db = grok_hud::storage::connect(&f.home.path().join("grok-hud")).unwrap();
     let count: i64 = db
         .query_row("SELECT COUNT(*) FROM snapshots", [], |r| r.get(0))
         .unwrap();

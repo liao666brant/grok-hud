@@ -71,7 +71,7 @@ pub fn fetch_billing(key: &str) -> Result<Value> {
         .header("Accept", "application/json")
         .header(
             "User-Agent",
-            concat!("grok-budget/", env!("CARGO_PKG_VERSION")),
+            concat!("grok-hud/", env!("CARGO_PKG_VERSION")),
         )
         .send()
         .map_err(|_| anyhow::anyhow!("额度接口连接失败或超时。"))?;

@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Grok Budget · 用量与周额度</title>
+<title>Grok HUD · 用量与周额度</title>
 <script>
-(function(){try{var h=location.hash.slice(1),t=(h==='light'||h==='dark')?h:(localStorage.getItem('gb-theme')||(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'));document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme='dark'}})();
+(function(){try{var h=location.hash.slice(1),k='grok-hud-theme',old='gb-theme',saved=localStorage.getItem(k);if(saved!=='light'&&saved!=='dark'){saved=localStorage.getItem(old);if(saved==='light'||saved==='dark'){localStorage.setItem(k,saved);try{localStorage.removeItem(old)}catch(_){}}}var t=(h==='light'||h==='dark')?h:(saved||(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'));document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme='dark'}})();
 </script>
 <style>
 /* ================= 设计令牌 ================= */
@@ -234,7 +234,7 @@ footer .wrap{display:flex;flex-direction:column;gap:2px}
   <div class="wrap topbar-in">
     <div class="brand">
       <span class="logo" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1.5a6.5 6.5 0 0 1 6.4 7.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" opacity=".55"/><path d="M8 4.2A3.8 3.8 0 0 1 11.8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="8" cy="8" r="1.6" fill="currentColor"/></svg></span>
-      <span>Grok Budget</span><span class="brand-tag">LOCAL&nbsp;OBSERVATORY</span>
+      <span>Grok HUD</span><span class="brand-tag">LOCAL&nbsp;OBSERVATORY</span>
     </div>
     <div class="top-actions">
       <span id="freshness" class="badge"><span class="dot"></span><span id="freshness-text">快照</span></span>
@@ -363,7 +363,7 @@ footer .wrap{display:flex;flex-direction:column;gap:2px}
       <li>估算假设本机覆盖本周期全部消耗、模型成本与额度按固定比例变化；其他设备、Grok Chat、旧账户账本、未结束的调用、计费延迟与动态折扣都会带来偏差。</li>
       <li>单次百分比误差按 ±1 个百分点做敏感性分析；敏感区间不是统计置信区间，反推周限不是官方上限。</li>
       <li>官方美元与 Token 周上限接口未公开，本看板全部数值均为本地推算。</li>
-      <li>本页是静态快照。在分发包目录运行 <code>./grok-budget/grok-budget.exe --html output/grok-budget.html</code> 生成最新版本；持续记录可使用 <code>--watch 10</code>。</li>
+      <li>本页是静态快照。在分发包目录运行 <code>./grok-hud/grok-hud.exe --html output/grok-hud.html</code> 生成最新版本；持续记录可使用 <code>--watch 10</code>。</li>
     </ul>
     <div class="actions">
       <button id="export" class="btn primary">
@@ -399,10 +399,10 @@ function fmtDate(s){const d=new Date(s);if(isNaN(d))return'--';const z=n=>String
 function stateOf(v){return v==null?'ok':v>=90?'danger':v>=70?'warn':'ok'}
 const STATE_LABEL={ok:'额度充足',warn:'接近上限',danger:'即将用满'};
 const REDUCED=matchMedia('(prefers-reduced-motion: reduce)').matches;
-function safe(name,fn){try{fn()}catch(err){console.error('[grok-budget] '+name+' 渲染失败:',err)}}
+function safe(name,fn){try{fn()}catch(err){console.error('[grok-hud] '+name+' 渲染失败:',err)}}
 
 /* 主题切换 */
-$('theme').addEventListener('click',()=>{const next=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=next;try{localStorage.setItem('gb-theme',next)}catch(_){}});
+$('theme').addEventListener('click',()=>{const next=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=next;try{localStorage.setItem('grok-hud-theme',next)}catch(_){}});
 
 /* 顶栏与横幅 */
 safe('freshness',()=>{
@@ -563,11 +563,11 @@ safe('estimate',()=>{
 safe('footer',()=>{put('footer-src','来源：'+(r.source||'本地账本')+' · 本地 usage.json · '+fmtDate(r.sampled_at_iso))});
 $('export').addEventListener('click',()=>{
   const a=document.createElement('a'),url=URL.createObjectURL(new Blob([JSON.stringify(r,null,2)],{type:'application/json'}));
-  a.href=url;a.download='grok-budget-snapshot.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  a.href=url;a.download='grok-hud-snapshot.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 });
 $('copy').addEventListener('click',()=>{
   const lines=[
-    'Grok Budget 摘要（采样于 '+fmtDate(r.sampled_at_iso)+'）',
+    'Grok HUD 摘要（采样于 '+fmtDate(r.sampled_at_iso)+'）',
     '账户已用 '+fmtPct(num(q.used_percent))+'%，剩余 '+fmtPct(num(q.remaining_percent))+'%，重置时间 '+fmtDate(q.period_end),
     '本机成本 '+cash(num(u.cost_usd))+'，'+compact(num(u.totalTokens))+' Token，'+grouped(num(u.turns))+' 轮 / '+grouped(num(u.sessions))+' 会话',
     e.available?('反推周限 '+cash(num(e.usd))+'（非官方，'+(e.confidence||'')+'）'):'周限暂无法估算',

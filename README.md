@@ -1,4 +1,4 @@
-# Grok Budget
+# Grok HUD
 
 Grok Build 的非官方额度监测插件。在状态栏中查看账户用量、重置时间、会话成本和 Token，也可以导出中文 HTML 看板。
 
@@ -39,13 +39,29 @@ Windows（PowerShell）：
 ./install.ps1
 ```
 
+Windows 也可以不下载 ZIP，直接从 GitHub 运行安装器：
+
+```powershell
+irm https://raw.githubusercontent.com/liao666brant/grok-hud/main/install.ps1 | iex
+```
+
+该命令从最新 Release 下载 `GrokHUD-windows-x64.zip` 并校验 SHA-256，解压到 `%USERPROFILE%\.grok\grok-hud\source` 后安装；重复执行同一命令即可更新。校验文件不可用或哈希不匹配时，安装器会退出。若该 Release 尚未提供 Windows 包，安装器会提示并退出，此时请按上面的方式下载 ZIP 后手动运行 `./install.ps1`。
+
 Linux（POSIX shell）：
 
 ```bash
 ./install.sh
 ```
 
-安装器会注册插件、配置状态栏，并启动当前用户的后台监测。监测使用普通用户权限、隐藏运行，不保存登录密码；登录时自动启动，退出或被停止后每分钟自动拉起，运行中的实例不会重复启动。Windows 通过计划任务 `GrokBudgetMonitor` 实现，Linux 通过 systemd 用户单元 `grok-budget-monitor.service` 和 `grok-budget-monitor.timer` 实现。
+Linux / WSL 也可以不下载 ZIP，直接从 GitHub 运行安装器：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/liao666brant/grok-hud/main/install.sh | sh
+```
+
+该命令从最新 Release 下载 `GrokHUD-linux-x64.zip` 并校验 SHA-256，解压到 `~/.grok/grok-hud/source` 后安装；重复执行同一命令即可更新。校验文件不可用或哈希不匹配时，安装器会退出。若该 Release 尚未提供 Linux 包，安装器会提示并退出，此时请按上面的方式下载 ZIP 后手动运行 `./install.sh`。
+
+安装器会注册插件、配置状态栏，并启动当前用户的后台监测。监测使用普通用户权限、隐藏运行，不保存登录密码；登录时自动启动，退出或被停止后每分钟自动拉起，运行中的实例不会重复启动。Windows 通过计划任务 `GrokHudMonitor` 实现，Linux 通过 systemd 用户单元 `grok-hud-monitor.service` 和 `grok-hud-monitor.timer` 实现。
 
 Linux 分发包中的二进制沿用 `.exe` 文件名，使插件 hooks 与清单在两个平台保持一致；Linux 对可执行文件扩展名没有要求。
 
@@ -59,24 +75,25 @@ Linux 分发包中的二进制沿用 `.exe` 文件名，使插件 hooks 与清�
 
 ```sh
 # 查询额度与本机统计
-./grok-budget/grok-budget.exe
+./grok-hud/grok-hud.exe
 
 # 主动刷新服务端数据
-./grok-budget/grok-budget.exe --refresh
+./grok-hud/grok-hud.exe --refresh
 
 # 输出 JSON 摘要
-./grok-budget/grok-budget.exe --json
+./grok-hud/grok-hud.exe --json
 
 # 只读历史快照，不联网、不刷新本机统计
-./grok-budget/grok-budget.exe --offline
+./grok-hud/grok-hud.exe --offline
 
 # 持续采样；Ctrl+C 停止
-./grok-budget/grok-budget.exe --watch 10
+./grok-hud/grok-hud.exe --watch 10
 
-# 生成看板并用默认浏览器打开
-./grok-budget/grok-budget.exe --html output/grok-budget.html
-Start-Process ./output/grok-budget.html
+# 生成看板
+./grok-hud/grok-hud.exe --html output/grok-hud.html
 ```
+
+Windows 用 `Start-Process ./output/grok-hud.html` 打开，Linux 用 `xdg-open ./output/grok-hud.html` 打开。
 
 新 Grok 会话中的 `/budget` 可以让模型解释查询结果。看板是静态快照，刷新浏览器不会重新查询；需要新数据时，再执行一次 `--html` 导出命令。
 
@@ -181,11 +198,13 @@ Start-Process ./output/grok-budget.html
 
 ## 更新与卸载
 
-下载新版本后运行 `./install.ps1`（Windows）或 `./install.sh`（Linux）。若同名插件来自另一个仍存在的目录，安装器会停止；使用原安装来源目录更新即可。
+下载新版本后运行 `./install.ps1`（Windows）或 `./install.sh`（Linux），两个平台也可以重复执行上面的一行安装命令。若同名插件来自另一个仍存在的目录，安装器会停止；使用原安装来源目录更新，或加 `-ReplaceSource`（Windows）/ `--replace-source`（Linux）让安装器改为当前目录。
 
-安装前会将旧配置、插件副本、注册信息及已有任务或单元定义备份到 `.grok/grok-budget/backups/<时间>/`。历史数据库位于 `.grok/grok-budget/history.sqlite3`，更新时保留数据。
+从旧 `grok-budget` 安装升级时，安装器会先停止旧计划任务 / systemd 单元并禁用旧插件，把 `.grok/grok-budget` 的数据目录（包括 `history.sqlite3`、WAL/SHM 文件和旧备份）完整合并到 `.grok/grok-hud`。新监测启动并验证成功后，安装器才移除旧的计划任务 / systemd 单元、卸载旧插件并删除旧数据目录；如果新监测安装失败，会恢复原有监测并重新启用旧插件。
 
-安装器生成的状态栏启动入口（Windows 为 `.grok/grok-budget/statusline.cmd`，Linux 为 `.grok/grok-budget/statusline.sh`）是 Grok 的兼容启动入口，需要保留。仓库和分发包不再提供额外的 `.cmd` 包装脚本。
+安装前会将旧配置、新旧插件副本、注册信息及已有任务或单元定义（包括旧 `grok-budget` 定义）备份到 `.grok/grok-hud/backups/<时间>/`。历史数据库位于 `.grok/grok-hud/history.sqlite3`，更新时保留数据。
+
+安装器生成的状态栏启动入口（Windows 为 `.grok/grok-hud/statusline.cmd`，Linux 为 `.grok/grok-hud/statusline.sh`）是 Grok 的兼容启动入口，需要保留。仓库和分发包不再提供额外的 `.cmd` 包装脚本。
 
 ```powershell
 ./uninstall.ps1
@@ -205,19 +224,19 @@ Start-Process ./output/grok-budget.html
 
 **一直显示旧数据？**
 
-先运行 `./grok-budget/grok-budget.exe --refresh` 查看错误。登录失效时打开 Grok 刷新登录，必要时执行 `grok login`。后台状态可通过以下命令查看：
+先运行 `./grok-hud/grok-hud.exe --refresh` 查看错误。登录失效时打开 Grok 刷新登录，必要时执行 `grok login`。后台状态可通过以下命令查看：
 
 ```powershell
-Get-ScheduledTask -TaskName GrokBudgetMonitor | Select-Object TaskName, State
-Get-ScheduledTaskInfo -TaskName GrokBudgetMonitor | Select-Object LastRunTime, LastTaskResult
+Get-ScheduledTask -TaskName GrokHudMonitor | Select-Object TaskName, State
+Get-ScheduledTaskInfo -TaskName GrokHudMonitor | Select-Object LastRunTime, LastTaskResult
 ```
 
 ```bash
-systemctl --user status grok-budget-monitor.service
-systemctl --user list-timers grok-budget-monitor.timer
+systemctl --user status grok-hud-monitor.service
+systemctl --user list-timers grok-hud-monitor.timer
 ```
 
-0.3.1 起，后台停止后通常在一分钟内恢复；`Running` / `active` 表示正在运行。需要立即启动：Windows 执行 `Start-ScheduledTask -TaskName GrokBudgetMonitor`，Linux 执行 `systemctl --user start grok-budget-monitor.service`。如需持续暂停：Windows 先 `Disable-ScheduledTask -TaskName GrokBudgetMonitor` 再 `Stop-ScheduledTask -TaskName GrokBudgetMonitor`；Linux 先 `systemctl --user disable grok-budget-monitor.timer`（关掉 watchdog）再 `systemctl --user stop grok-budget-monitor.service`；恢复时对应执行 enable 和 start。单独停止服务会被自动拉起。
+0.3.1 起，后台停止后通常在一分钟内恢复；`Running` / `active` 表示正在运行。需要立即启动：Windows 执行 `Start-ScheduledTask -TaskName GrokHudMonitor`，Linux 执行 `systemctl --user start grok-hud-monitor.service`。如需持续暂停：Windows 先 `Disable-ScheduledTask -TaskName GrokHudMonitor` 再 `Stop-ScheduledTask -TaskName GrokHudMonitor`；Linux 先 `systemctl --user disable grok-hud-monitor.timer`（关掉 watchdog）再 `systemctl --user stop grok-hud-monitor.service`；恢复时对应执行 enable 和 start。单独停止服务会被自动拉起。
 
 **为什么金额变了，百分比没变？**
 
@@ -245,7 +264,7 @@ Linux：
 ./install.sh
 ```
 
-构建脚本检查格式、运行 release 测试和 Clippy、检查脚本语法与监测定义（Windows 检查 PowerShell 语法与计划任务定义，Linux 用 `sh -n` 与 systemd 单元定义测试），然后生成对应平台的 ZIP 和 SHA-256。打包时逐文件核对内容，并执行解压后的程序验证版本。仅编译时执行 `cargo build --release --locked`，程序位于 `target/release/grok-budget`（Windows 为 `grok-budget.exe`）。
+构建脚本检查格式、运行 release 测试和 Clippy、检查脚本语法与监测定义（Windows 检查 PowerShell 语法与计划任务定义，Linux 用 `sh -n` 与 systemd 单元定义测试），然后生成对应平台的 ZIP 和 SHA-256。打包时逐文件核对内容，并执行解压后的程序验证版本。仅编译时执行 `cargo build --release --locked`，程序位于 `target/release/grok-hud`（Windows 为 `grok-hud.exe`）。
 
 真实恢复测试需在已登录的用户会话执行：Windows `powershell -NoProfile -ExecutionPolicy Bypass -File tests/monitor-task.ps1 -Integration`；Linux `sh tests/monitor-service.sh -Integration`。两者都使用独立定义和无登录凭据的测试目录，验证停止后自动恢复及多次启动只保留一个实例，最后移除测试单元。CI 运行定义、程序格式与退出码测试；真实恢复测试在对应平台的本机验收。
 
@@ -254,18 +273,20 @@ GitHub Actions 在推送和 PR 时构建、测试并保存两个平台的 ZIP；
 | 路径 | 内容 |
 | --- | --- |
 | `src/` | 额度接口、账本统计、缓存调度和终端显示 |
-| `grok-budget/` | 插件清单、hooks、`/budget` 命令及内嵌看板模板 |
+| `grok-hud/` | 插件清单、hooks、`/budget` 命令及内嵌看板模板 |
 | `install.ps1` / `uninstall.ps1` | Windows 安装、更新与卸载 |
 | `install.sh` / `uninstall.sh` | Linux 安装、更新与卸载 |
 | `scripts/monitor-task.ps1` | Windows 计划任务定义（安装器与测试共用） |
 | `scripts/monitor-service.sh` | Linux systemd 用户单元定义（安装器与测试共用） |
+| `scripts/migrate-data.*` | 旧数据目录迁移（安装器与测试共用） |
 | `scripts/build.*` / `scripts/package.*` | 各平台构建检查与发布包生成 |
 | `.github/workflows/build.yml` | 双平台 CI 与标签发布 |
 | `tests/monitor-task.ps1` / `tests/monitor-service.sh` | 后台监测定义与真实恢复测试 |
+| `tests/migrate-data.*` / `tests/install-bootstrap.sh` | 数据迁移与 GitHub 引导安装测试 |
 | `tests/native.rs` | 数据口径、刷新调度、并发与显示回归测试 |
 | `tests/speed.rs` | 生成指标、排版合并与端到端状态栏测试 |
 
-本仓库只包含 Grok Budget 插件，不包含 Grok Build 本体、账户凭据或使用历史。使用 [MIT License](LICENSE) 发布。
+本仓库只包含 Grok HUD 插件，不包含 Grok Build 本体、账户凭据或使用历史。使用 [MIT License](LICENSE) 发布。
 
 ## 致谢
 

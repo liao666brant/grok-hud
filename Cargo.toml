@@ -1,5 +1,5 @@
 [package]
-name = "grok-budget"
+name = "grok-hud"
 version = "0.5.0"
 edition = "2024"
 description = "Native Grok Build allowance monitor and status line"

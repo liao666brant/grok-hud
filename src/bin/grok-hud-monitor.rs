@@ -7,7 +7,7 @@ use clap::Parser;
 use std::{path::PathBuf, process::ExitCode};
 
 #[derive(Parser)]
-#[command(version, about = "Grok Budget background monitor")]
+#[command(version, about = "Grok HUD background monitor")]
 struct Args {
     #[arg(long)]
     grok_home: PathBuf,
@@ -15,8 +15,8 @@ struct Args {
 
 fn main() -> ExitCode {
     let args = Args::parse();
-    let dir = args.grok_home.join("grok-budget");
-    match grok_budget::storage::run_monitor(&args.grok_home, &dir) {
+    let dir = args.grok_home.join("grok-hud");
+    match grok_hud::storage::run_monitor(&args.grok_home, &dir) {
         Ok(()) => ExitCode::SUCCESS,
         Err(_) => ExitCode::FAILURE,
     }

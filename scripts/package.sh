@@ -10,29 +10,29 @@ case "$output_directory" in
 esac
 cd "$repo_root"
 
-version=$(jq -r '.version' grok-budget/plugin.json)
+version=$(jq -r '.version' grok-hud/plugin.json)
 printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo 'Expected a numeric release version.' >&2; exit 1; }
 grep -Eq "^version = \"$version\"$" Cargo.toml || { echo 'Cargo and plugin versions differ.' >&2; exit 1; }
-binary=target/release/grok-budget
-monitor=target/release/grok-budget-monitor
+binary=target/release/grok-hud
+monitor=target/release/grok-hud-monitor
 [ -x "$binary" ] || { echo "Missing release binary: $binary (run scripts/build.sh first)." >&2; exit 1; }
 [ -x "$monitor" ] || { echo "Missing release binary: $monitor (run scripts/build.sh first)." >&2; exit 1; }
 binary_version=$("$binary" --version)
-[ "$binary_version" = "grok-budget $version" ] || { echo 'Release binary and manifest versions differ.' >&2; exit 1; }
-cp "$binary" grok-budget/grok-budget.exe
-cp "$monitor" grok-budget/grok-budget-monitor.exe
+[ "$binary_version" = "grok-hud $version" ] || { echo 'Release binary and manifest versions differ.' >&2; exit 1; }
+cp "$binary" grok-hud/grok-hud.exe
+cp "$monitor" grok-hud/grok-hud-monitor.exe
 
 files="Cargo.toml Cargo.lock rust-toolchain.toml README.md LICENSE CHANGELOG.md install.ps1 uninstall.ps1 install.sh uninstall.sh"
-for f in $(find src tests scripts grok-budget -type f); do
+for f in $(find src tests scripts grok-hud -type f); do
     files="$files $f"
 done
 files=$(printf '%s\n' $files | LC_ALL=C sort -u)
 
 # Ship executable modes inside the ZIP even when the checkout lost them.
-chmod +x grok-budget/grok-budget.exe grok-budget/grok-budget-monitor.exe
+chmod +x grok-hud/grok-hud.exe grok-hud/grok-hud-monitor.exe
 chmod +x install.sh uninstall.sh scripts/*.sh tests/*.sh
 
-name="GrokBudget-$version-linux-x64.zip"
+name="GrokHUD-$version-linux-x64.zip"
 staging="$repo_root/target/package/$(date +%s%N)"
 temp_zip="$staging/$name"
 mkdir -p "$staging" "$output_directory"
@@ -53,7 +53,7 @@ fi
 extracted="$staging/extracted"
 mkdir -p "$extracted"
 (cd "$extracted" && unzip -q "$temp_zip")
-for relative in install.sh grok-budget/grok-budget.exe; do
+for relative in install.sh grok-hud/grok-hud.exe; do
     [ -x "$extracted/$relative" ] || {
         echo "Packaged file lost its executable bit: $relative (use zip or Linux-native 7-Zip)." >&2
         exit 1
@@ -64,7 +64,7 @@ for relative in $files; do
     b=$(sha256sum "$extracted/$relative" | cut -d' ' -f1)
     [ "$a" = "$b" ] || { echo "Packaged file differs: $relative" >&2; exit 1; }
 done
-extracted_version=$("$extracted/grok-budget/grok-budget.exe" --version)
+extracted_version=$("$extracted/grok-hud/grok-hud.exe" --version)
 [ "$extracted_version" = "$binary_version" ] || { echo 'Extracted binary smoke test failed.' >&2; exit 1; }
 
 output="$output_directory/$name"

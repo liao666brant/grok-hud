@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, bail};
 use clap::Parser;
-use grok_budget::{display, storage};
+use grok_hud::{display, storage};
 use serde_json::Value;
 use std::{
     env,
@@ -60,7 +60,7 @@ fn run(args: &Args) -> Result<()> {
     let dir = args
         .data_dir
         .clone()
-        .unwrap_or_else(|| home.join("grok-budget"));
+        .unwrap_or_else(|| home.join("grok-hud"));
     if args.daemon {
         if args.offline {
             return Ok(());
@@ -96,7 +96,7 @@ fn run(args: &Args) -> Result<()> {
             );
         }
         if args.watch.is_some() && !args.offline {
-            storage::signal_at(&home, &dir, None, true, grok_budget::now())?;
+            storage::signal_at(&home, &dir, None, true, grok_hud::now())?;
         }
         let opts = storage::Options {
             force: args.refresh,
@@ -107,15 +107,15 @@ fn run(args: &Args) -> Result<()> {
         if !args.offline
             && let Ok(report) = result.as_mut()
         {
-            let _ = storage::refresh_local_cached(&home, &dir, report, grok_budget::now());
+            let _ = storage::refresh_local_cached(&home, &dir, report, grok_hud::now());
         }
         if args.statusline {
             let mut session = display::session_usage(&home, &payload);
             if !args.offline {
-                grok_budget::live::apply(&home, &payload, &mut session, result.as_mut().ok());
+                grok_hud::live::apply(&home, &payload, &mut session, result.as_mut().ok());
             }
-            let flow = grok_budget::speed::measure(&home, &payload);
-            let environment = grok_budget::environment::count(&home, &payload);
+            let flow = grok_hud::speed::measure(&home, &payload);
+            let environment = grok_hud::environment::count(&home, &payload);
             let columns = env::var("COLUMNS")
                 .ok()
                 .and_then(|v| v.parse().ok())
@@ -158,10 +158,10 @@ fn main() {
             return;
         }
         if args.statusline {
-            println!("额度暂不可用  请运行 grok-budget.exe --refresh");
+            println!("额度暂不可用  请运行 grok-hud.exe --refresh");
             return;
         }
-        eprintln!("Grok Budget: {e}");
+        eprintln!("Grok HUD: {e}");
         std::process::exit(1);
     }
 }

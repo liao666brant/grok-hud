@@ -25,30 +25,54 @@ fail() {
 
 fixture_exe="/test space/O'Brien/monitor.exe"
 fixture_home="/test space/O'Brien/.grok"
-service_text=$(grok_budget_monitor_service_text "$fixture_exe" "$fixture_home") || fail 'Unit arguments with a double quote must be rejected.'
-printf '%s\n' "$service_text" | grep -qF "Description=$GROK_BUDGET_MONITOR_DESCRIPTION" || fail 'Service description must identify this installer.'
+service_text=$(grok_hud_monitor_service_text "$fixture_exe" "$fixture_home") || fail 'Unit arguments with a double quote must be rejected.'
+printf '%s\n' "$service_text" | grep -qF "Description=$GROK_HUD_MONITOR_DESCRIPTION" || fail 'Service description must identify this installer.'
 printf '%s\n' "$service_text" | grep -qF "ExecStart=\"$fixture_exe\" --grok-home \"$fixture_home\"" || fail 'ExecStart quoting must preserve spaces and apostrophes.'
 printf '%s\n' "$service_text" | grep -qF 'Restart=on-failure' || fail 'Failure retries must remain enabled.'
 printf '%s\n' "$service_text" | grep -qF 'WantedBy=default.target' || fail 'Monitor must start at login.'
-timer_text=$(grok_budget_monitor_timer_text)
+timer_text=$(grok_hud_monitor_timer_text)
 printf '%s\n' "$timer_text" | grep -qF 'OnCalendar=minutely' || fail 'Watchdog must run every minute.'
 printf '%s\n' "$timer_text" | grep -qF 'WantedBy=timers.target' || fail 'Watchdog timer must be enabled with the user timers.'
-if grok_budget_monitor_service_text 'bad"quote.exe' "$fixture_home" >/dev/null 2>&1; then
+if grok_hud_monitor_service_text 'bad"quote.exe' "$fixture_home" >/dev/null 2>&1; then
     fail 'A double quote in a unit path must be rejected.'
 fi
 
 tmpcfg=$(mktemp -d)
 mkdir -p "$tmpcfg/systemd/user"
-printf 'Description=Something else\n' > "$tmpcfg/systemd/user/$GROK_BUDGET_MONITOR_SERVICE"
-if XDG_CONFIG_HOME="$tmpcfg" grok_budget_units_owned_by_us >/dev/null 2>&1; then
+printf 'Description=Something else\n' > "$tmpcfg/systemd/user/$GROK_HUD_MONITOR_SERVICE"
+if XDG_CONFIG_HOME="$tmpcfg" grok_hud_units_owned_by_us >/dev/null 2>&1; then
     fail 'A foreign unit description must be rejected.'
 fi
-printf 'Description=%s\n' "$GROK_BUDGET_MONITOR_DESCRIPTION" > "$tmpcfg/systemd/user/$GROK_BUDGET_MONITOR_SERVICE"
-XDG_CONFIG_HOME="$tmpcfg" grok_budget_units_owned_by_us || fail 'Our own unit description must be accepted.'
+printf 'Description=%s\n' "$GROK_HUD_MONITOR_DESCRIPTION" > "$tmpcfg/systemd/user/$GROK_HUD_MONITOR_SERVICE"
+XDG_CONFIG_HOME="$tmpcfg" grok_hud_units_owned_by_us || fail 'Our own unit description must be accepted.'
+printf 'Description=%s\n' "$GROK_HUD_LEGACY_MONITOR_DESCRIPTION" > "$tmpcfg/systemd/user/$GROK_HUD_LEGACY_MONITOR_SERVICE"
+XDG_CONFIG_HOME="$tmpcfg" grok_hud_legacy_units_owned_by_us || fail 'Legacy unit description must be recognized.'
+printf 'Description=%s\n' "$GROK_HUD_LEGACY_TIMER_DESCRIPTION" > "$tmpcfg/systemd/user/$GROK_HUD_LEGACY_MONITOR_TIMER"
+tmpbin="$tmpcfg/bin"
+mkdir -p "$tmpbin"
+cat > "$tmpbin/systemctl" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >> "$SYSTEMCTL_LOG"
+exit 0
+EOF
+chmod +x "$tmpbin/systemctl"
+log="$tmpcfg/systemctl.log"
+SYSTEMCTL_LOG="$log" PATH="$tmpbin:$PATH" XDG_CONFIG_HOME="$tmpcfg" grok_hud_disable_legacy_units || fail 'Disabling legacy units failed.'
+[ -f "$tmpcfg/systemd/user/$GROK_HUD_LEGACY_MONITOR_SERVICE" ] && [ -f "$tmpcfg/systemd/user/$GROK_HUD_LEGACY_MONITOR_TIMER" ] || fail 'Disabling legacy units must keep their files for rollback.'
+grep -q "disable $GROK_HUD_LEGACY_MONITOR_TIMER $GROK_HUD_LEGACY_MONITOR_SERVICE" "$log" || fail 'Disabling legacy units must disable the timer and service.'
+SYSTEMCTL_LOG="$log" PATH="$tmpbin:$PATH" XDG_CONFIG_HOME="$tmpcfg" grok_hud_enable_legacy_units || fail 'Enabling legacy units failed.'
+grep -q "enable $GROK_HUD_LEGACY_MONITOR_TIMER $GROK_HUD_LEGACY_MONITOR_SERVICE" "$log" || fail 'Enabling legacy units must enable the timer and service.'
+grep -q "start $GROK_HUD_LEGACY_MONITOR_TIMER $GROK_HUD_LEGACY_MONITOR_SERVICE" "$log" || fail 'Enabling legacy units must start the timer and service.'
+SYSTEMCTL_LOG="$log" PATH="$tmpbin:$PATH" XDG_CONFIG_HOME="$tmpcfg" grok_hud_remove_legacy_units || fail 'Removing legacy units failed.'
+[ ! -e "$tmpcfg/systemd/user/$GROK_HUD_LEGACY_MONITOR_SERVICE" ] && [ ! -e "$tmpcfg/systemd/user/$GROK_HUD_LEGACY_MONITOR_TIMER" ] || fail 'Removing legacy units must delete their files.'
+printf 'Description=Something else\n' > "$tmpcfg/systemd/user/$GROK_HUD_LEGACY_MONITOR_SERVICE"
+if XDG_CONFIG_HOME="$tmpcfg" grok_hud_legacy_units_owned_by_us >/dev/null 2>&1; then
+    fail 'A foreign legacy unit description must be rejected.'
+fi
 rm -rf "$tmpcfg"
 
 # Linux cargo output has no .exe suffix; -Binary can point at a packaged copy.
-[ -n "$binary" ] || binary="$repo_root/target/release/grok-budget-monitor"
+[ -n "$binary" ] || binary="$repo_root/target/release/grok-hud-monitor"
 [ -f "$binary" ] || fail "Monitor binary not found: $binary"
 binary=$(cd -- "$(dirname -- "$binary")" && pwd -P)/$(basename "$binary")
 # The packaged monitor must be a Linux ELF binary, never a stray Windows build.
@@ -68,9 +92,9 @@ systemctl --user show-environment >/dev/null 2>&1 || fail 'No systemd user sessi
 fixture_id=$(od -An -N8 -tx8 /dev/urandom | tr -d ' \n')
 fixture_home="$repo_root/target/monitor-tests/$fixture_id"
 mkdir -p "$fixture_home"
-service="grok-budget-test-$fixture_id.service"
-timer="grok-budget-test-$fixture_id.timer"
-unit_dir=$(grok_budget_unit_dir)
+service="grok-hud-test-$fixture_id.service"
+timer="grok-hud-test-$fixture_id.timer"
+unit_dir=$(grok_hud_unit_dir)
 registered=0
 
 fixture_processes() {
@@ -111,8 +135,8 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-grok_budget_monitor_service_text "$binary" "$fixture_home" > "$unit_dir/$service"
-grok_budget_monitor_timer_text > "$unit_dir/$timer"
+grok_hud_monitor_service_text "$binary" "$fixture_home" > "$unit_dir/$service"
+grok_hud_monitor_timer_text > "$unit_dir/$timer"
 systemctl --user daemon-reload
 registered=1
 systemctl --user start "$service"

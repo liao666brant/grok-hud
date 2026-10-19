@@ -22,5 +22,7 @@ try {
     }
     & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File tests\monitor-task.ps1
     if ($LASTEXITCODE -ne 0) { throw 'Monitor task tests failed.' }
+    & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File tests\migrate-data.ps1
+    if ($LASTEXITCODE -ne 0) { throw 'Data migration tests failed.' }
     & (Join-Path $PSScriptRoot 'package.ps1') -OutputDirectory $OutputDirectory
 } finally { Pop-Location }

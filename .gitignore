@@ -5,7 +5,7 @@ output/
 test-results/
 artifacts/
 target/
-grok-budget/*.exe
+grok-hud/*.exe
 
 # Release assets and local credentials/data never belong in source control.
 *.zip.sha256

@@ -1,4 +1,4 @@
-use grok_budget::{data::*, display::*, storage::*, *};
+use grok_hud::{data::*, display::*, storage::*, *};
 use serde_json::{Value, json};
 use std::{fs, path::Path};
 use tempfile::TempDir;
@@ -449,7 +449,7 @@ fn zero_value_spans_color_cleanly() {
         line.lines()
             .nth(1)
             .unwrap()
-            .starts_with("额度暂不可用 · 请运行 grok-budget.exe --refresh")
+            .starts_with("额度暂不可用 · 请运行 grok-hud.exe --refresh")
     );
     let session = Session {
         cost: Some(0.53),
@@ -580,7 +580,7 @@ fn html_script_injection_is_escaped() {
 #[test]
 fn statusline_colors_default_on_and_no_color_disables() {
     let tmp = TempDir::new().unwrap();
-    let exe = env!("CARGO_BIN_EXE_grok-budget");
+    let exe = env!("CARGO_BIN_EXE_grok-hud");
     let payload = b"{\"cost\":{\"total_cost_usd\":0.53},\"context_window\":{\"session_input_tokens\":100,\"session_output_tokens\":20},\"session_id\":\"x\"}";
     let run = |no_color: bool| {
         let mut cmd = std::process::Command::new(exe);
@@ -899,14 +899,14 @@ fn local_cache_invalidates_on_ledger_change_without_changing_samples() {
 fn offline_hook_does_not_signal_background_network_requests() {
     let tmp = TempDir::new().unwrap();
     auth(tmp.path(), "a");
-    let out = std::process::Command::new(env!("CARGO_BIN_EXE_grok-budget"))
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_grok-hud"))
         .args(["--hook", "--event", "stop", "--offline", "--grok-home"])
         .arg(tmp.path())
         .output()
         .unwrap();
     assert!(out.status.success());
     assert!(out.stdout.is_empty());
-    assert!(!tmp.path().join("grok-budget/history.sqlite3").exists());
+    assert!(!tmp.path().join("grok-hud/history.sqlite3").exists());
 }
 
 #[test]

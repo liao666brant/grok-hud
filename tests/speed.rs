@@ -1,4 +1,4 @@
-use grok_budget::{display::*, speed, *};
+use grok_hud::{display::*, speed, *};
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -351,7 +351,7 @@ fn statusline_pipeline_shows_metrics_from_real_session_files() {
         json!({"ts":iso(t0 + 13.0),"type":"phase_changed","phase":"streaming_text"}),
         json!({"ts":iso(t0 + 30.0),"type":"turn_ended","outcome":"completed"}),
     ]);
-    let mut child = Command::new(env!("CARGO_BIN_EXE_grok-budget"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_grok-hud"))
         .args(["--statusline", "--offline", "--no-color", "--grok-home"])
         .arg(f.home.path())
         .env("COLUMNS", "200")

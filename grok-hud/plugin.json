@@ -1,5 +1,5 @@
 {
-  "name": "grok-budget",
+  "name": "grok-hud",
   "version": "0.5.0",
   "description": "Native Rust status line with cache rate, token speed, time-to-first-token, skill and MCP counts, session cost and tokens, weekly allowance and local usage monitor.",
   "author": {"name": "Local tools"},
