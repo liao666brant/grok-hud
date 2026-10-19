@@ -102,13 +102,6 @@ fn live_money(value: Option<f64>, estimated: bool) -> String {
         money(value)
     }
 }
-fn live_tokens(value: Option<f64>, estimated: bool) -> String {
-    if estimated && let Some(value) = value {
-        format!("≈{}", tokens(Some(value)))
-    } else {
-        tokens(value)
-    }
-}
 pub fn width(text: &str) -> usize {
     UnicodeWidthStr::width(text)
 }
@@ -232,7 +225,7 @@ fn session_elements(session: &Session) -> Vec<Element> {
     // Blue label (quantity), plain value.
     let mut p = Painter::new();
     p.value("词元 ", BLUE);
-    p.push(&live_tokens(session.tokens, session.tokens_estimated));
+    p.push(&tokens(session.tokens));
     vec![p.finish()]
 }
 
@@ -316,10 +309,7 @@ fn quota_elements(r: &Value) -> Vec<Element> {
         local.push("*");
     }
     local.push(SEP);
-    local.push(&live_tokens(
-        number(&usage["totalTokens"]),
-        usage["tokens_estimated"] == true,
-    ));
+    local.push(&tokens(number(&usage["totalTokens"])));
     local.push(" 词元");
 
     let mut weekly = Painter::new();
@@ -330,11 +320,7 @@ fn quota_elements(r: &Value) -> Vec<Element> {
         money(limit)
     ));
     weekly.push(SEP);
-    weekly.push(&format!(
-        "{}{}",
-        if token_limit.is_some() { "≈" } else { "" },
-        tokens(token_limit)
-    ));
+    weekly.push(&tokens(token_limit));
     weekly.push(" 词元");
 
     vec![spent, local.finish(), weekly.finish()]

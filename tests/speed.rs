@@ -219,7 +219,7 @@ fn performance_elements_render_stack_and_color() {
     );
     assert!(row2.contains("用量 25%"), "{row2}");
     assert!(row2.contains("本机 $1.50 · 12K 词元"), "{row2}");
-    assert!(row2.contains("周限 ≈$30.00 · ≈240K 词元"), "{row2}");
+    assert!(row2.contains("周限 ≈$30.00 · 240K 词元"), "{row2}");
 
     let approx = speed::Flow {
         speed: Some(240.0),

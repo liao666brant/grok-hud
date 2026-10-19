@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- 去掉 Token 数值前的 `≈`，费用和输出速度的估算标记保留。
 - 插件完整更名为 Grok HUD：Cargo 包名、二进制（`grok-hud` / `grok-hud-monitor`）、插件目录与名称、安装数据目录、systemd 单元、Windows 计划任务和发布包名统一使用 `grok-hud`。
 - 安装器自动识别并迁移旧 `grok-budget` 安装到 `.grok/grok-hud`。
 - Linux 与 Windows 支持从 GitHub 直接安装：`curl -fsSL .../install.sh | sh` / `irm .../install.ps1 | iex` 下载并校验最新 Release 包，解压到 `.grok/grok-hud/source` 后安装；Release 缺少对应平台包或校验文件、哈希不匹配时提示并退出。新增 `--replace-source` / `-ReplaceSource` 以切换插件来源。发布流程同时生成稳定的 `GrokHUD-linux-x64.zip` / `GrokHUD-windows-x64.zip` 资产名。
