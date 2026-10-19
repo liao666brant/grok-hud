@@ -229,7 +229,7 @@ systemctl --user list-timers grok-budget-monitor.timer
 
 ## 从源码构建
 
-需要 rustup；Windows 另需 C++ 构建工具，Linux 需要 `jq`、`zip`、`unzip` 和 coreutils（`sha256sum`）。`rust-toolchain.toml` 固定 Rust 1.96.0、rustfmt 和 Clippy。在仓库根目录执行：
+需要 rustup；Windows 另需 C++ 构建工具，Linux 需要 `jq`、`unzip`、coreutils（`sha256sum`），以及 `zip` 或 Linux 原生 7-Zip（`7zz`/`7z`）。`rust-toolchain.toml` 固定 Rust 1.96.0、rustfmt 和 Clippy。在仓库根目录执行：
 
 Windows：
 

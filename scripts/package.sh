@@ -36,12 +36,29 @@ name="GrokBudget-$version-linux-x64.zip"
 staging="$repo_root/target/package/$(date +%s%N)"
 temp_zip="$staging/$name"
 mkdir -p "$staging" "$output_directory"
-(cd "$repo_root" && zip -q -X "$temp_zip" $files)
+# Prefer Info-ZIP (the CI baseline). Linux-native 7-Zip also preserves Unix
+# mode bits; the Windows build does not, which the extracted-mode check catches.
+if command -v zip >/dev/null 2>&1; then
+    (cd "$repo_root" && zip -q -X "$temp_zip" $files)
+elif command -v 7zz >/dev/null 2>&1; then
+    (cd "$repo_root" && 7zz a -tzip -bd -y -bso0 -bsp0 "$temp_zip" $files)
+elif command -v 7z >/dev/null 2>&1; then
+    (cd "$repo_root" && 7z a -tzip -bd -y -bso0 -bsp0 "$temp_zip" $files)
+else
+    echo 'zip or Linux-native 7-Zip (7zz/7z) is required.' >&2
+    exit 1
+fi
 
 # Verify all packaged bytes, then smoke-test the extracted binary without any user data.
 extracted="$staging/extracted"
 mkdir -p "$extracted"
 (cd "$extracted" && unzip -q "$temp_zip")
+for relative in install.sh grok-budget/grok-budget.exe; do
+    [ -x "$extracted/$relative" ] || {
+        echo "Packaged file lost its executable bit: $relative (use zip or Linux-native 7-Zip)." >&2
+        exit 1
+    }
+done
 for relative in $files; do
     a=$(sha256sum "$relative" | cut -d' ' -f1)
     b=$(sha256sum "$extracted/$relative" | cut -d' ' -f1)
